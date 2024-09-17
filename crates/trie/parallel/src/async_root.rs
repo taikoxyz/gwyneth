@@ -232,7 +232,7 @@ pub enum AsyncStateRootError {
     },
     /// Receive error
     #[error(transparent)]
-    Receive(#[from] oneshot::error::TryRecvError),
+    Receive(#[from] oneshot::error::RecvError),
     /// Error while calculating storage root.
     #[error(transparent)]
     StorageRoot(#[from] StorageRootError),
