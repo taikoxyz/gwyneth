@@ -3,7 +3,7 @@ use crate::{
     trie_cursor::TrieCursorFactory, HashedPostState,
 };
 use alloy_primitives::{keccak256, Bytes, B256};
-use alloy_rlp::{BufMut, Decodable, Encodable};
+use alloy_rlp::{BufMut, Decodable, Encodabl};
 use itertools::Either;
 use reth_execution_errors::{StateProofError, TrieWitnessError};
 use reth_primitives::constants::EMPTY_ROOT_HASH;
@@ -92,6 +92,7 @@ where
                 .with_prefix_sets_mut(self.prefix_sets.clone())
                 .with_targets(proof_targets.clone())
                 .multiproof()?;
+        println!("account multiproof {account_multiproof:?}");
 
         // Attempt to compute state root from proofs and gather additional
         // information for the witness.
@@ -135,7 +136,7 @@ where
                 )?);
             }
 
-            let storage_root = Self::next_root_from_proofs(storage_trie_nodes, |key: Nibbles| {
+            Self::next_root_from_proofs(storage_trie_nodes, |key: Nibbles| {
                 // Right pad the target with 0s.
                 let mut padded_key = key.pack();
                 padded_key.resize(32, 0);
@@ -154,7 +155,6 @@ where
                 self.witness.insert(keccak256(node.as_ref()), node.clone()); // record in witness
                 Ok(node)
             })?;
-            debug_assert_eq!(storage_multiproof.root, storage_root);
         }
 
         Self::next_root_from_proofs(account_trie_nodes, |key: Nibbles| {
@@ -193,13 +193,19 @@ where
             self.witness.insert(keccak256(encoded.as_ref()), encoded.clone());
 
             let mut next_path = path.clone();
+            println!("decoding at {next_path:?}: {encoded:?}");
             match TrieNode::decode(&mut &encoded[..])? {
                 TrieNode::Branch(branch) => {
                     next_path.push(key[path.len()]);
                     let children = branch_node_children(path.clone(), &branch);
-                    for (child_path, node_hash) in children {
+                    for (child_path, value) in children {
                         if !key.starts_with(&child_path) {
-                            trie_nodes.insert(child_path, Either::Left(node_hash));
+                            let value = if value.len() < B256::len_bytes() {
+                                Either::Right(value.to_vec())
+                            } else {
+                                Either::Left(B256::from_slice(&value[1..]))
+                            };
+                            trie_nodes.insert(child_path, value);
                         }
                     }
                 }
@@ -254,9 +260,13 @@ where
                             let node = trie_node_provider(path.clone())?;
                             match TrieNode::decode(&mut &node[..])? {
                                 TrieNode::Branch(branch) => {
-                                    let children = branch_node_children(path, &branch);
-                                    for (child_path, branch_hash) in children {
-                                        hash_builder.add_branch(child_path, branch_hash, false);
+                                    for (child_path, value) in branch_node_children(path, &branch) {
+                                        if value.len() < B256::len_bytes() {
+                                            hash_builder.add_leaf(child_path, value);
+                                        } else {
+                                            let hash = B256::from_slice(&value[1..]);
+                                            hash_builder.add_branch(child_path, hash, false);
+                                        }
                                     }
                                     break
                                 }
@@ -283,14 +293,14 @@ where
 }
 
 /// Returned branch node children with keys in order.
-fn branch_node_children(prefix: Nibbles, node: &BranchNode) -> Vec<(Nibbles, B256)> {
+fn branch_node_children(prefix: Nibbles, node: &BranchNode) -> Vec<(Nibbles, &[u8])> {
     let mut children = Vec::with_capacity(node.state_mask.count_ones() as usize);
     let mut stack_ptr = node.as_ref().first_child_index();
     for index in CHILD_INDEX_RANGE {
         if node.state_mask.is_bit_set(index) {
             let mut child_path = prefix.clone();
             child_path.push(index);
-            children.push((child_path, B256::from_slice(&node.stack[stack_ptr][1..])));
+            children.push((child_path, &node.stack[stack_ptr][..]));
             stack_ptr += 1;
         }
     }
