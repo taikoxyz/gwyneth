@@ -22,6 +22,7 @@ jobs:
     runs-on:
       group: Reth
     env:
+      RUST_LOG: info,exex=debug 
       RUST_BACKTRACE: 1
     strategy:
       matrix:
@@ -41,7 +42,8 @@ jobs:
             --locked --features "asm-keccak ${{ matrix.network }}" \
             --workspace --exclude ef-tests \
             --partition hash:${{ matrix.partition }}/2 \
-            -E "!kind(test)"
+            -E "!kind(test)" \
+            --nocapture
 
   state:
     name: Ethereum state tests
