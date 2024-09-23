@@ -3,7 +3,7 @@ use alloc::{boxed::Box, string::ToString};
 
 use crate::ConfigureEvm;
 use alloy_eips::eip4788::BEACON_ROOTS_ADDRESS;
-use reth_chainspec::{ChainSpec, EthereumHardforks};
+use reth_chainspec::EthereumHardforks;
 use reth_execution_errors::{BlockExecutionError, BlockValidationError};
 use reth_primitives::Header;
 use revm::{interpreter::Host, Database, DatabaseCommit, Evm};
@@ -19,7 +19,7 @@ use revm_primitives::{BlockEnv, CfgEnvWithHandlerCfg, EnvWithHandlerCfg, B256};
 pub fn pre_block_beacon_root_contract_call<EvmConfig, DB>(
     db: &mut DB,
     evm_config: &EvmConfig,
-    chain_spec: &ChainSpec,
+    chain_spec: impl EthereumHardforks,
     initialized_cfg: &CfgEnvWithHandlerCfg,
     initialized_block_env: &BlockEnv,
     parent_beacon_block_root: Option<B256>,
@@ -58,9 +58,9 @@ where
 ///
 /// [EIP-4788]: https://eips.ethereum.org/EIPS/eip-4788
 #[inline]
-pub fn apply_beacon_root_contract_call<EvmConfig, EXT, DB, Spec>(
+pub fn apply_beacon_root_contract_call<EvmConfig, EXT, DB>(
     evm_config: &EvmConfig,
-    chain_spec: &Spec,
+    chain_spec: impl EthereumHardforks,
     block_timestamp: u64,
     block_number: u64,
     parent_beacon_block_root: Option<B256>,
@@ -70,7 +70,6 @@ where
     DB: Database + DatabaseCommit,
     DB::Error: core::fmt::Display,
     EvmConfig: ConfigureEvm<Header = Header>,
-    Spec: EthereumHardforks,
 {
     if !chain_spec.is_cancun_active_at_timestamp(block_timestamp) {
         return Ok(())
