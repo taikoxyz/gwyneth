@@ -1,0 +1,21 @@
+# Assuming cargo-chef image exists
+# If not pls replace the following line with
+#   FROM lukemathwalker/cargo-chef:latest-rust-1 AS chef
+FROM lukemathwalker/cargo-chef AS chef
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get -y upgrade && apt-get install -y libclang-dev pkg-config git
+
+# Builds a cargo-chef plan
+FROM chef AS planner
+RUN git clone -b gwyneth https://github.com/taikoxyz/rbuilder.git 
+WORKDIR /app/rbuilder
+RUN cargo chef prepare --recipe-path recipe.json
+
+# Builds the application
+FROM chef AS builder
+WORKDIR /app
+COPY --from=planner /app/rbuilder .
+RUN cargo build --release
+RUN cp -r /app/target/release/rbuilder /app/rbuilder
