@@ -42,13 +42,13 @@ RUN cargo build --profile $BUILD_PROFILE --features "$FEATURES" --locked --bin r
 # ADD https://worldtimeapi.org/api/ip /tmp/bustcache
 
 # Clone and build rbuilder (gwyneth branch)
-RUN git clone -b gwyneth https://github.com/taikoxyz/rbuilder.git /app/rbuilder
-WORKDIR /app/rbuilder
-RUN cargo build --release
+# RUN git clone -b gwyneth https://github.com/taikoxyz/rbuilder.git /app/rbuilder
+# WORKDIR /app/rbuilder
+# RUN cargo build --release
 
 # Copy binaries to a temporary location
 RUN cp /app/target/$BUILD_PROFILE/reth /app/reth
-RUN cp /app/rbuilder/target/release/rbuilder /app/rbuilder
+# RUN cp /app/rbuilder/target/release/rbuilder /app/rbuilder
 
 # Use Ubuntu as the release image
 FROM ubuntu:22.04 AS runtime
@@ -63,17 +63,17 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Copy reth and rbuilder binaries over from the build stage
 COPY --from=builder /app/reth /usr/local/bin
-COPY --from=builder /app/rbuilder /usr/local/bin
+# COPY --from=builder /app/rbuilder /usr/local/bin
 
 # Copy the entire rbuilder repository
-COPY --from=builder /app/rbuilder /app/rbuilder
+# COPY --from=builder /app/rbuilder /app/rbuilder
 
 # Copy licenses
 COPY LICENSE-* ./
 
 # Create start script
-RUN echo '#!/bin/bash\nrbuilder run /app/rbuilder/config-gwyneth-reth.toml' > /app/start_rbuilder.sh && \
-    chmod +x /app/start_rbuilder.sh
+# RUN echo '#!/bin/bash\nrbuilder run /app/rbuilder/config-gwyneth-reth.toml' > /app/start_rbuilder.sh && \
+#     chmod +x /app/start_rbuilder.sh
 
 EXPOSE 30303 30303/udp 9001 8545 8546
 ENTRYPOINT ["/usr/local/bin/reth"]
