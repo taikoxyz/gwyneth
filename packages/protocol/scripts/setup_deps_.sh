@@ -28,11 +28,17 @@ IFS=',' read -r -a rebuilds <<< "$REBUILD"
 # Build taiko-reth
 if [[ " ${rebuilds[@]} " =~ "reth" ]]; then
     echo "Rebuilding taiko-reth"
-    docker build -f ./scripts/docker/dockerfile.reth -t taiko-reth-only ../../
+    if ! docker build -f ./scripts/docker/dockerfile.reth -t taiko-reth-only ../../; then
+        echo "Failed to build the Docker image taiko-reth-only."
+        exit 1
+    fi
 fi
 if [[ " ${rebuilds[@]} " =~ "rbuilder" ]]; then
     echo "Rebuilding rbuilder"
-    docker build -f ./scripts/docker/dockerfile.rbuilder -t rbuilder .
+    if ! docker build -f ./scripts/docker/dockerfile.rbuilder -t rbuilder .; then
+        echo "Failed to build the Docker image rbuilder."
+        exit 1
+    fi
 fi
 
 echo "Building the image taiko_reth..."
