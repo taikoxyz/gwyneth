@@ -6,8 +6,8 @@ RPC_URL_L2 = 'http://127.0.0.1:' # Anything is fine for now as long as we dont h
 w3_taiko_l2 = Web3(Web3.HTTPProvider(RPC_URL_L2)) 
 
 # Some pre-loaded ETH addresses from Kurtosis private network (NO secret, no harm to use for private testnets!)
-sender_addresses =  ['0x8943545177806ED17B9F23F0a21ee5948eCaa776']
-sender_pks = ['bcdf20249abf0ed6d944c0288fad489e33f66b3960d9e6229c1cd214ed3bbe31']
+sender_addresses =  ['0xAe95d8DA9244C37CaC0a3e16BA966a8e852Bb6D6']
+sender_pks = ['27515f805127bebad2fb9b183508bdacb8c763da16f54e0678b16e8f28ef3fff']
 
 receiver = '0xf93Ee4Cf8c6c40b329b0c0626F28333c132CF241' # This address also has pre-loaded ETH addresses
 
@@ -34,7 +34,7 @@ if __name__ == "__main__":
             'chainId': chainId,
             'from': sender,
             'to': receiver,
-            'value': w3_taiko_l2.to_wei('50000', 'ether'),
+            'value': w3_taiko_l2.to_wei('250', 'ether'),
             'nonce': w3_taiko_l2.eth.get_transaction_count(sender),
             'gas': 200000,
             'maxFeePerGas': 2000000000, # w3_taiko_l2.eth.gas_price or something
@@ -52,16 +52,14 @@ if __name__ == "__main__":
         # 2. Sign tx with a private key
         signed_txn = w3_taiko_l2.eth.account.sign_transaction(transaction, sender_pks[idx])
 
-        tx_hash = w3_taiko_l2.eth.send_raw_transaction(signed_txn.rawTransaction)
-        print(f"Transaction sent: {w3_taiko_l2.to_hex(tx_hash)}")
-        # # print("RawTransaction:")
-        # # print(signed_txn.rawTransaction)
-        # print("RawTransaction.hex():")
-        # print(signed_txn.raw_transaction.hex())
+        # print("RawTransaction:")
+        # print(signed_txn.rawTransaction)
+        print("RawTransaction.hex():")
+        print(signed_txn.rawTransaction.hex())
 
-        # txn_hash = w3_taiko_l2.eth.send_raw_transaction(signed_txn.raw_transaction)
-        # print("Txn hash:")
-        # print(txn_hash.hex())
+        txn_hash = w3_taiko_l2.eth.send_raw_transaction(signed_txn.rawTransaction)
+        print("Txn hash:")
+        print(txn_hash.hex())
 
         # # Get the balance
         # balance_wei = w3_taiko_l2.eth.get_balance(sender)
