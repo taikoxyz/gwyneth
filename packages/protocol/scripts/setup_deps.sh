@@ -97,8 +97,8 @@ fi
 echo "Extracted Blockscout port: $BLOCKSCOUT_PORT"
 echo "$BLOCKSCOUT_PORT" > /tmp/kurtosis_blockscout_port
 # # Print the entire Kurtosis output for debugging
-echo "Kurtosis Output:"
-echo "$KURTOSIS_OUTPUT"
+# echo "Kurtosis Output:"
+# echo "$KURTOSIS_OUTPUT"
 
 # Extract the "User Services" section
 USER_SERVICES_SECTION=$(echo "$KURTOSIS_OUTPUT" | awk '/^========================================== User Services ==========================================/{flag=1;next}/^$/{flag=0}flag')
@@ -139,27 +139,28 @@ else
     echo "Found container ID: $CONTAINER_ID"
 fi
 
-# Check if the file exists in the container
-FILE_PATH="/app/rbuilder/config-gwyneth-reth.toml"
-if ! docker exec "$CONTAINER_ID" test -f "$FILE_PATH"; then
-    echo "File $FILE_PATH does not exist in the container."
-    exit 1
-fi
+# # Check if the file exists in the container
+# FILE_PATH="/app/rbuilder/config-gwyneth-reth.toml"
+# if ! docker exec "$CONTAINER_ID" test -f "$FILE_PATH"; then
+#     echo "File $FILE_PATH does not exist in the container."
+#     exit 1
+# fi
 
 # Update the cl_node_url in the file, regardless of its current content
-ESCAPED_URL=$(echo "$BEACON_HTTP_URL" | sed 's/[\/&]/\\&/g')
-UPDATE_COMMAND="sed -i '/^cl_node_url[[:space:]]*=/c\cl_node_url = [\"$ESCAPED_URL\"]' $FILE_PATH"
-if docker exec "$CONTAINER_ID" sh -c "$UPDATE_COMMAND"; then
-    echo "Successfully updated $FILE_PATH in the container."
-else
-    echo "Failed to update $FILE_PATH in the container."
-    exit 1
-fi
+# ESCAPED_URL=$(echo "$BEACON_HTTP_URL" | sed 's/[\/&]/\\&/g')
+# UPDATE_COMMAND="sed -i '/^cl_node_url[[:space:]]*=/c\cl_node_url = [\"$ESCAPED_URL\"]' $FILE_PATH"
+# if docker exec "$CONTAINER_ID" sh -c "$UPDATE_COMMAND"; then
+#     echo "Successfully updated $FILE_PATH in the container."
+# else
+#     echo "Failed to update $FILE_PATH in the container."
+#     exit 1
+# fi
 
-# Verify the change
-VERIFY_COMMAND="grep 'cl_node_url' $FILE_PATH"
-VERIFICATION=$(docker exec "$CONTAINER_ID" sh -c "$VERIFY_COMMAND")
-echo "Updated line in $FILE_PATH: $VERIFICATION"
+# # Verify the change
+# VERIFY_COMMAND="grep 'cl_node_url' $FILE_PATH"
+# VERIFICATION=$(docker exec "$CONTAINER_ID" sh -c "$VERIFY_COMMAND")
+# echo "Updated line in $FILE_PATH: $VERIFICATION"
+
 # Load the .env file and extract the PRIVATE_KEY
 if [ -f .env ]; then
     export $(grep -v '^#' .env | xargs)
@@ -178,45 +179,44 @@ echo "Running forge foundry script..."
 FORGE_OUTPUT=$(eval $FORGE_COMMAND | tee /dev/tty)
 echo "Script execution completed."
 
+# # Ensure the log file exists in the current working directory
+# touch ./rbuilder.log
 
-# Ensure the log file exists in the current working directory
-touch ./rbuilder.log
+# echo "Starting rbuilder and streaming logs to ./rbuilder.log..."
+# docker exec -d "$CONTAINER_ID" /bin/bash -c "
+#     /app/start_rbuilder.sh > /tmp/rbuilder.log 2>&1 &
+#     RBUILDER_PID=\$!
+#     tail -f /tmp/rbuilder.log &
+#     TAIL_PID=\$!
+#     wait \$RBUILDER_PID
+# "
 
-echo "Starting rbuilder and streaming logs to ./rbuilder.log..."
-docker exec -d "$CONTAINER_ID" /bin/bash -c "
-    /app/start_rbuilder.sh > /tmp/rbuilder.log 2>&1 &
-    RBUILDER_PID=\$!
-    tail -f /tmp/rbuilder.log &
-    TAIL_PID=\$!
-    wait \$RBUILDER_PID
-"
+# # Start a background process to stream logs from the container to the host file
+# docker exec "$CONTAINER_ID" tail -f /tmp/rbuilder.log >> ./rbuilder.log &
+# FILE_LOG_PID=$!
 
-# Start a background process to stream logs from the container to the host file
-docker exec "$CONTAINER_ID" tail -f /tmp/rbuilder.log >> ./rbuilder.log &
-FILE_LOG_PID=$!
+# # Start another process to stream logs to the terminal
+# docker exec "$CONTAINER_ID" tail -f /tmp/rbuilder.log &
+# TERMINAL_LOG_PID=$!
 
-# Start another process to stream logs to the terminal
-docker exec "$CONTAINER_ID" tail -f /tmp/rbuilder.log &
-TERMINAL_LOG_PID=$!
+# # Set up a trap to handle Ctrl+C (SIGINT)
+# trap 'echo "Interrupt received. Stopping terminal log streaming, but file logging continues."; kill $TERMINAL_LOG_PID; exit' INT TERM
 
-# Set up a trap to handle Ctrl+C (SIGINT)
-trap 'echo "Interrupt received. Stopping terminal log streaming, but file logging continues."; kill $TERMINAL_LOG_PID; exit' INT TERM
+# echo "rbuilder is running in the container."
+# echo "Logs are being streamed to ./rbuilder.log and to this terminal."
+# echo "Press Ctrl+C to stop watching logs in the terminal. rbuilder and file logging will continue."
 
-echo "rbuilder is running in the container."
-echo "Logs are being streamed to ./rbuilder.log and to this terminal."
-echo "Press Ctrl+C to stop watching logs in the terminal. rbuilder and file logging will continue."
+# # Wait for the terminal log streaming to be manually interrupted
+# wait $TERMINAL_LOG_PID
 
-# Wait for the terminal log streaming to be manually interrupted
-wait $TERMINAL_LOG_PID
-
-# Check if rbuilder is still running
-if docker exec "$CONTAINER_ID" pgrep -f "/app/start_rbuilder.sh" > /dev/null; then
-    echo "rbuilder is still running in the container. Logs continue to be written to ./rbuilder.log"
-else
-    echo "rbuilder has stopped unexpectedly."
-    kill $FILE_LOG_PID
-    exit 1
-fi
+# # Check if rbuilder is still running
+# if docker exec "$CONTAINER_ID" pgrep -f "/app/start_rbuilder.sh" > /dev/null; then
+#     echo "rbuilder is still running in the container. Logs continue to be written to ./rbuilder.log"
+# else
+#     echo "rbuilder has stopped unexpectedly."
+#     kill $FILE_LOG_PID
+#     exit 1
+# fi
 
 # Extract the path to run-latest.json
 RUN_LATEST_PATH=$(echo "$FORGE_OUTPUT" | grep "Transactions saved to:" | sed 's/Transactions saved to: //')
