@@ -139,22 +139,22 @@ else
     echo "Found container ID: $CONTAINER_ID"
 fi
 
-# Check if the file exists in the container
-FILE_PATH="/app/rbuilder/config-gwyneth-reth.toml"
-if ! docker exec "$CONTAINER_ID" test -f "$FILE_PATH"; then
-    echo "File $FILE_PATH does not exist in the container."
-    exit 1
-fi
+# # Check if the file exists in the container
+# FILE_PATH="/app/rbuilder/config-gwyneth-reth.toml"
+# if ! docker exec "$CONTAINER_ID" test -f "$FILE_PATH"; then
+#     echo "File $FILE_PATH does not exist in the container."
+#     exit 1
+# fi
 
-# Update the cl_node_url in the file, regardless of its current content
-ESCAPED_URL=$(echo "$BEACON_HTTP_URL" | sed 's/[\/&]/\\&/g')
-UPDATE_COMMAND="sed -i '/^cl_node_url[[:space:]]*=/c\cl_node_url = [\"$ESCAPED_URL\"]' $FILE_PATH"
-if docker exec "$CONTAINER_ID" sh -c "$UPDATE_COMMAND"; then
-    echo "Successfully updated $FILE_PATH in the container."
-else
-    echo "Failed to update $FILE_PATH in the container."
-    exit 1
-fi
+# # Update the cl_node_url in the file, regardless of its current content
+# ESCAPED_URL=$(echo "$BEACON_HTTP_URL" | sed 's/[\/&]/\\&/g')
+# UPDATE_COMMAND="sed -i '/^cl_node_url[[:space:]]*=/c\cl_node_url = [\"$ESCAPED_URL\"]' $FILE_PATH"
+# if docker exec "$CONTAINER_ID" sh -c "$UPDATE_COMMAND"; then
+#     echo "Successfully updated $FILE_PATH in the container."
+# else
+#     echo "Failed to update $FILE_PATH in the container."
+#     exit 1
+# fi
 
 # Verify the change
 VERIFY_COMMAND="grep 'cl_node_url' $FILE_PATH"
