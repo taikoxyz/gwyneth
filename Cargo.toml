@@ -396,6 +396,9 @@ reth-trie-common = { path = "crates/trie/common" }
 reth-trie-db = { path = "crates/trie/db" }
 reth-trie-parallel = { path = "crates/trie/parallel" }
 
+# rbuilder
+rbuilder = { git = "https://github.com/taikoxyz/rbuilder", branch = "merge_develop_to_gwyneth" }
+
 # revm
 revm = { version = "14.0.0", features = [
     "std",

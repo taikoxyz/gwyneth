@@ -15,6 +15,7 @@ workspace = true
 [dependencies]
 
 gwyneth.workspace = true
+#rbuilder.workspace = true
 
 # reth
 reth-chainspec.workspace = true

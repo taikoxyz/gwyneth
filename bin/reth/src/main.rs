@@ -11,9 +11,15 @@ use reth_node_builder::{NodeBuilder, NodeConfig, NodeHandle};
 use reth_node_ethereum::EthereumNode;
 use reth_tasks::TaskManager;
 
+// use rbuilder::{
+//     live_builder::{cli, config::Config},
+//     utils::build_info::print_version_info,
+// };
+use std::path::PathBuf;
+
 const BASE_CHAIN_ID: u64 = gwyneth::exex::BASE_CHAIN_ID; // Base chain ID for L2s
 const NUM_L2_CHAINS: u64 = 2; // Number of L2 chains to create. Todo: Shall come from config */
-
+const RBUILDER_CONFIG_PATH: &str = "/app/rbuilder/config-gwyneth-reth.toml";
 fn main() -> eyre::Result<()> {
     reth::cli::Cli::parse_args().run(|builder, _| async move {
         let tasks = TaskManager::current();
@@ -64,11 +70,25 @@ fn main() -> eyre::Result<()> {
             .install_exex("Rollup", move |ctx| async {
                 Ok(gwyneth::exex::Rollup::new(ctx, gwyneth_nodes).await?.start())
             })
+            .on_rpc_started(move |ctx, _| {
+                // Start rbuilder when ethereum node's RPC is ready
+                let config_path = PathBuf::from(RBUILDER_CONFIG_PATH);
+                spawn_rbuilder(config_path);
+                Ok(())
+            })
             .launch()
             .await?;
 
         handle.wait_for_node_exit().await
     })
+}
+/// Spawns the rbuilder with the given config path
+fn spawn_rbuilder(config_path: PathBuf) {
+    tokio::spawn(async move {
+        // if let Err(e) = cli::run::<Config>(print_version_info, None).await {
+        //     eprintln!("RBuilder error: {}", e);
+        // }
+    });
 }
 
 #[cfg(test)]
