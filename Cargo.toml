@@ -142,7 +142,7 @@ members = [
     "examples/stateful-precompile/",
     "examples/txpool-tracing/",
     "testing/ef-tests/",
-    "testing/testing-utils",
+    "testing/testing-utils", "crates/gwyneth",
 ]
 default-members = ["bin/reth"]
 
@@ -253,12 +253,10 @@ opt-level = 3
 lto = "thin"
 
 [profile.release]
-opt-level = 3
+opt-level = 1
 lto = "thin"
-debug = "line-tables-only"
-strip = true
-panic = "unwind"
-codegen-units = 16
+debug = true
+codegen-units = 8
 
 # Use the `--profile profiling` flag to show symbols in release mode.
 # e.g. `cargo build --profile profiling`
@@ -277,6 +275,8 @@ lto = "fat"
 codegen-units = 1
 
 [workspace.dependencies]
+gwyneth = { path = "crates/gwyneth" }
+
 # reth
 reth = { path = "bin/reth" }
 reth-auto-seal-consensus = { path = "crates/consensus/auto-seal" }
@@ -407,10 +407,10 @@ revm-primitives = { version = "9.0.0", features = [
 
 # eth
 alloy-chains = "0.1.18"
-alloy-dyn-abi = "0.8.0"
-alloy-primitives = { version = "0.8.0", default-features = false }
+alloy-dyn-abi = "0.8.2"
+alloy-primitives = { version = "0.8.2", default-features = false }
 alloy-rlp = "0.3.4"
-alloy-sol-types = "0.8.0"
+alloy-sol-types = "0.8.2"
 alloy-trie = { version = "0.5", default-features = false }
 
 alloy-consensus = { version = "0.3.0", default-features = false }
@@ -492,6 +492,7 @@ tracing = "0.1.0"
 tracing-appender = "0.2"
 url = "2.3"
 zstd = "0.13"
+bincode = "1.3"
 
 # metrics
 metrics = "0.23.0"
@@ -562,3 +563,17 @@ serial_test = "3"
 similar-asserts = "1.5.0"
 tempfile = "3.8"
 test-fuzz = "5"
+
+[patch.crates-io]
+revm = { git = "https://github.com/taikoxyz/revm.git", branch = "changeset" }
+revm-primitives = { git = "https://github.com/taikoxyz/revm.git", branch = "changeset" }
+revm-interpreter = { git = "https://github.com/taikoxyz/revm.git", branch = "changeset" }
+revm-precompile = { git = "https://github.com/taikoxyz/revm.git", branch = "changeset" }
+
+#revm = { path = "../../revm-gwyneth/revm/crates/revm" }
+#revm-primitives = { path = "../../revm-gwyneth/revm/crates/primitives" }
+#revm-interpreter = { path = "../../revm-gwyneth/revm/crates/interpreter" }
+#revm-precompile = { path = "../../revm-gwyneth/revm/crates/precompile" }
+
+revm-inspectors = { git = "https://github.com/taikoxyz/revm-inspectors.git", branch = "main-rbuilder" }
+#revm-inspectors = { path = "../../revm-inspector-gwyneth/revm-inspectors"}

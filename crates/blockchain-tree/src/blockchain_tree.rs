@@ -15,13 +15,13 @@ use reth_evm::execute::BlockExecutorProvider;
 use reth_execution_errors::{BlockExecutionError, BlockValidationError};
 use reth_execution_types::{Chain, ExecutionOutcome};
 use reth_primitives::{
-    BlockHash, BlockNumHash, BlockNumber, EthereumHardfork, ForkBlock, GotExpected, Receipt,
-    SealedBlock, SealedBlockWithSenders, SealedHeader, StaticFileSegment, B256, U256,
+    BlockHash, BlockNumHash, BlockNumber, BufMut, EthereumHardfork, ForkBlock, GotExpected,
+    Receipt, SealedBlock, SealedBlockWithSenders, SealedHeader, StaticFileSegment, B256, U256,
 };
 use reth_provider::{
     BlockExecutionWriter, BlockNumReader, BlockWriter, CanonStateNotification,
     CanonStateNotificationSender, CanonStateNotifications, ChainSpecProvider, ChainSplit,
-    ChainSplitTarget, DisplayBlocksChain, HeaderProvider, ProviderError, StaticFileProviderFactory,
+    ChainSplitTarget, DisplayBlocksChain, HeaderProvider, ProviderError, StaticFileProviderFactory, NODES,
 };
 use reth_prune_types::PruneModes;
 use reth_stages_api::{MetricEvent, MetricEventsSender};
@@ -643,13 +643,14 @@ where
                         return None;
                     };
 
+                    println!("insert_unwound_chain");
                     debug!(target: "blockchain_tree",
                         unwound_block= ?block.num_hash(),
                         chain_id = ?chain_id,
                         chain_tip = ?chain.tip().num_hash(),
                         "Prepend unwound block state to blockchain tree chain");
-
-                    chain.prepend_state(cloned_execution_outcome.state().clone())
+                    let chain_id = self.externals.provider_factory.chain_spec().chain.id();
+                    chain.prepend_state(cloned_execution_outcome.state(chain_id))
                 }
             }
         }
@@ -1023,6 +1024,7 @@ where
         &mut self,
         block_hash: BlockHash,
     ) -> Result<CanonicalOutcome, CanonicalError> {
+        // Brecht reorg make_canonical
         let mut durations_recorder = MakeCanonicalDurationsRecorder::default();
 
         let old_block_indices = self.block_indices().clone();
@@ -1216,6 +1218,7 @@ where
         chain: Chain,
         recorder: &mut MakeCanonicalDurationsRecorder,
     ) -> Result<(), CanonicalError> {
+        // Brecht reorg state trie calculation
         let (blocks, state, chain_trie_updates) = chain.into_inner();
         let hashed_state = state.hash_state_slow();
         let prefix_sets = hashed_state.construct_prefix_sets().freeze();
@@ -1274,25 +1277,6 @@ where
 
         provider_rw.commit()?;
         recorder.record_relative(MakeCanonicalAction::CommitCanonicalChainToDatabase);
-
-        Ok(())
-    }
-
-    /// Unwind tables and put it inside state
-    pub fn unwind(&mut self, unwind_to: BlockNumber) -> Result<(), CanonicalError> {
-        // nothing to be done if unwind_to is higher then the tip
-        if self.block_indices().canonical_tip().number <= unwind_to {
-            return Ok(())
-        }
-        // revert `N` blocks from current canonical chain and put them inside BlockchainTree
-        let old_canon_chain = self.revert_canonical_from_database(unwind_to)?;
-
-        // check if there is block in chain
-        if let Some(old_canon_chain) = old_canon_chain {
-            self.state.block_indices.unwind_canonical_chain(unwind_to);
-            // insert old canonical chain to BlockchainTree.
-            self.insert_unwound_chain(AppendableChain::new(old_canon_chain));
-        }
 
         Ok(())
     }
@@ -1972,12 +1956,12 @@ mod tests {
         // chain 0 has two blocks so receipts and reverts len is 2
         let chain0 = tree.state.chains.get(&0.into()).unwrap().execution_outcome();
         assert_eq!(chain0.receipts().len(), 2);
-        assert_eq!(chain0.state().reverts.len(), 2);
+        assert_eq!(chain0.all_states().reverts.len(), 2);
         assert_eq!(chain0.first_block(), block1.number);
         // chain 1 has one block so receipts and reverts len is 1
         let chain1 = tree.state.chains.get(&1.into()).unwrap().execution_outcome();
         assert_eq!(chain1.receipts().len(), 1);
-        assert_eq!(chain1.state().reverts.len(), 1);
+        assert_eq!(chain1.all_states().reverts.len(), 1);
         assert_eq!(chain1.first_block(), block2.number);
     }
 

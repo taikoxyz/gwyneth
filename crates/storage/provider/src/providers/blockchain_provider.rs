@@ -1462,9 +1462,9 @@ mod tests {
     };
     use reth_execution_types::{Chain, ExecutionOutcome};
     use reth_primitives::{
-        BlockHashOrNumber, BlockNumHash, BlockNumberOrTag, BlockWithSenders, Receipt, SealedBlock,
-        SealedBlockWithSenders, StaticFileSegment, TransactionMeta, TransactionSignedNoHash,
-        Withdrawals, B256,
+        constants::ETHEREUM_CHAIN_ID, BlockHashOrNumber, BlockNumHash, BlockNumberOrTag,
+        BlockWithSenders, Receipt, SealedBlock, SealedBlockWithSenders, StaticFileSegment,
+        TransactionMeta, TransactionSignedNoHash, Withdrawals, B256,
     };
     use reth_storage_api::{
         BlockHashReader, BlockIdReader, BlockNumReader, BlockReader, BlockReaderIdExt, BlockSource,
@@ -3160,13 +3160,22 @@ mod tests {
             ExecutionOutcome {
                 bundle: BundleState::new(
                     database_state.into_iter().map(|(address, (account, _))| {
-                        (address, None, Some(account.into()), Default::default())
+                        (
+                            ChainAddress(ETHEREUM_CHAIN_ID, address),
+                            None,
+                            Some(account.into()),
+                            Default::default(),
+                        )
                     }),
                     database_changesets
                         .iter()
                         .map(|block_changesets| {
                             block_changesets.iter().map(|(address, account, _)| {
-                                (*address, Some(Some((*account).into())), [])
+                                (
+                                    ChainAddress(ETHEREUM_CHAIN_ID, *address),
+                                    Some(Some((*account).into())),
+                                    [],
+                                )
                             })
                         })
                         .collect::<Vec<_>>(),
@@ -3194,10 +3203,19 @@ mod tests {
                         Arc::new(ExecutionOutcome {
                             bundle: BundleState::new(
                                 in_memory_state.into_iter().map(|(address, (account, _))| {
-                                    (address, None, Some(account.into()), Default::default())
+                                    (
+                                        ChainAddress(ETHEREUM_CHAIN_ID, address),
+                                        None,
+                                        Some(account.into()),
+                                        Default::default(),
+                                    )
                                 }),
                                 [in_memory_changesets.iter().map(|(address, account, _)| {
-                                    (*address, Some(Some((*account).into())), Vec::new())
+                                    (
+                                        ChainAddress(ETHEREUM_CHAIN_ID, *address),
+                                        Some(Some((*account).into())),
+                                        Vec::new(),
+                                    )
                                 })],
                                 [],
                             ),

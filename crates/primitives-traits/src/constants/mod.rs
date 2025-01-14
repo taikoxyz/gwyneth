@@ -36,6 +36,13 @@ pub const BEACON_NONCE: u64 = 0u64;
 /// See <https://github.com/paradigmxyz/reth/issues/3233>.
 pub const ETHEREUM_BLOCK_GAS_LIMIT: u64 = 30_000_000;
 
+pub const ETHEREUM_CHAIN_ID: u64 = 1;
+pub const BASE_CHAIN_ID: u64 = 167010; // or whatever value you want to use
+pub const L1_CHAIN_ID: u64 = 160010;
+
+/// Number of L2 chains to create
+pub const NUM_L2_CHAINS: u64 = 2; // or whatever number you need
+
 /// The minimum tx fee below which the txpool will reject the transaction.
 ///
 /// Configured to `7` WEI which is the lowest possible value of base fee under mainnet EIP-1559

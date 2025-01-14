@@ -831,6 +831,7 @@ impl<TX: DbTx> DatabaseProvider<TX> {
         }
 
         Ok(ExecutionOutcome::new_init(
+            self.chain_spec().chain().id(),
             state,
             reverts,
             Vec::new(),
@@ -1129,6 +1130,7 @@ impl<TX: DbTxMut + DbTx> DatabaseProvider<TX> {
         }
 
         Ok(ExecutionOutcome::new_init(
+            self.chain_spec().chain().id(),
             state,
             reverts,
             Vec::new(),
@@ -2697,7 +2699,7 @@ impl<TX: DbTxMut + DbTx> StateChangeWriter for DatabaseProvider<TX> {
             for (address, info) in account_block_reverts {
                 account_changeset_cursor.append_dup(
                     block_number,
-                    AccountBeforeTx { address, info: info.map(Into::into) },
+                    AccountBeforeTx { address: address, info: info.map(Into::into) },
                 )?;
             }
         }
@@ -2706,6 +2708,9 @@ impl<TX: DbTxMut + DbTx> StateChangeWriter for DatabaseProvider<TX> {
     }
 
     fn write_state_changes(&self, mut changes: StateChangeset) -> ProviderResult<()> {
+        println!("Writing state changes");
+
+        //changes.filter_for_chain(self.chain_spec.chain().id());
         // sort all entries so they can be written to database in more performant way.
         // and take smaller memory footprint.
         changes.accounts.par_sort_by_key(|a| a.0);
@@ -3206,7 +3211,7 @@ impl<TX: DbTxMut + DbTx> HistoryWriter for DatabaseProvider<TX> {
 
         // storage history stage
         {
-            let indices = self.changed_storages_and_blocks_with_range(range)?;
+            let mut indices = self.changed_storages_and_blocks_with_range(range)?;
             self.insert_storage_history_index(indices)?;
         }
 
