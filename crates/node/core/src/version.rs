@@ -1,6 +1,6 @@
 //! Version information for reth.
-use reth_db_api::models::ClientVersion;
-use reth_rpc_types::engine::ClientCode;
+use alloy_rpc_types_engine::ClientCode;
+use reth_db::ClientVersion;
 
 /// The client code for Reth
 pub const CLIENT_CODE: ClientCode = ClientCode::RH;
@@ -144,9 +144,6 @@ mod tests {
     #[test]
     fn assert_extradata_less_32bytes() {
         let extradata = default_extradata();
-        assert!(
-            extradata.as_bytes().len() <= 32,
-            "extradata must be less than 32 bytes: {extradata}"
-        )
+        assert!(extradata.len() <= 32, "extradata must be less than 32 bytes: {extradata}")
     }
 }

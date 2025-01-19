@@ -16,5 +16,9 @@ reth-execution-errors.workspace = true
 reth-primitives.workspace = true
 reth-storage-errors.workspace = true
 
+# alloy
+alloy-primitives.workspace = true
+alloy-eips.workspace = true
+
 # misc
 thiserror.workspace = true

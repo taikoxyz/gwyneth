@@ -13,88 +13,211 @@ use reth_basic_payload_builder::{
 use reth_errors::RethError;
 use reth_evm::{
     execute::BlockExecutionOutput,
-    system_calls::{
-        post_block_withdrawal_requests_contract_call, pre_block_beacon_root_contract_call,
-        pre_block_blockhashes_contract_call,
-    },
     ConfigureEvm,
 };
 use reth_evm_ethereum::eip6110::parse_deposits_from_receipts;
 use reth_execution_types::ExecutionOutcome;
-use reth_payload_builder::{
-    database::{to_sync_cached_reads, CachedReads, SyncCachedReads},
-    error::PayloadBuilderError,
-    EthBuiltPayload,
-};
-use reth_primitives::{
-    constants::{eip4844::MAX_DATA_GAS_PER_BLOCK, BEACON_NONCE}, eip4844::calculate_excess_blob_gas, hex, proofs::{self, calculate_requests_root}, Block, BlockNumber, ChainId, EthereumHardforks, Header, Receipt, Receipts, Requests, StateDiff, StateDiffAccount, StateDiffStorageSlot, TransactionSigned, Withdrawals, B256, EMPTY_OMMER_ROOT_HASH, U256
-};
-use reth_provider::{state_diff_to_block_execution_output, StateProvider, StateProviderFactory};
+use reth_provider::{state_diff_to_block_execution_output, ChainSpecProvider, StateProvider, StateProviderFactory};
 use reth_revm::database::{StateProviderDatabase, SyncStateProviderDatabase};
-use reth_transaction_pool::{BestTransactionsAttributes, TransactionPool};
 use reth_trie::HashedPostState;
 use revm::{
     db::{states::bundle_state::BundleRetention, BundleAccount, BundleState, State},
-    primitives::{EVMError, EnvWithHandlerCfg, ResultAndState},
+    primitives::{calc_excess_blob_gas, BlockEnv, EVMError, EnvWithHandlerCfg, CfgEnvWithHandlerCfg, ResultAndState, InvalidTransaction, TxEnv},
     DatabaseCommit, SyncDatabase,
 };
+use reth_chainspec::ChainSpec;
+use alloy_primitives::{U256, B256, BlockNumber, ChainId};
+use alloy_eips::{eip4844::MAX_DATA_GAS_PER_BLOCK, eip7685::Requests, merge::BEACON_NONCE};
+use reth_primitives::{
+    proofs::{self},
+    Block, BlockBody, EthereumHardforks, Receipt,
+};
+
 use tracing::{debug, trace, warn};
 
 use reth_revm::primitives::ChainAddress;
 use reth_revm::db::AccountStatus;
 use reth_revm::db::states::StorageSlot;
+use reth_revm::cached::to_sync_cached_reads;
+use alloy_eips::eip4895::Withdrawals;
+use alloy_consensus::Receipts;
+use reth_node_api::PayloadBuilderAttributes;
+
+use reth_primitives::GwynethDA;
 
 use reth_execution_types::execution_outcome_to_state_diff;
 
-use reth_primitives::alloy_primitives::Bytes;
+use alloy_primitives::hex;
+
+use reth_ethereum_engine_primitives::{
+    EthBuiltPayload, EthPayloadAttributes, EthPayloadBuilderAttributes, EthereumEngineValidator,
+};
+use reth_payload_builder::PayloadBuilderError;
+use alloy_consensus::{Header, EMPTY_OMMER_ROOT_HASH};
 
 use crate::GwynethPayloadBuilderAttributes;
+
+use reth_transaction_pool::{
+    noop::NoopTransactionPool, BestTransactions, BestTransactionsAttributes, TransactionPool,
+    ValidPoolTransaction,
+};
+use reth_revm::cached::CachedReads;
+
+use std::sync::Arc;
+use crate::EthEvmConfig;
+use reth_evm::NextBlockEnvAttributes;
+use crate::PayloadBuilder;
+
+use reth_chain_state::ExecutedBlock;
+
+type BestTransactionsIter<Pool> = Box<
+    dyn BestTransactions<Item = Arc<ValidPoolTransaction<<Pool as TransactionPool>::Transaction>>>,
+>;
+
+/// Ethereum payload builder
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GwynethPayloadBuilder<EvmConfig = EthEvmConfig> {
+    /// The type responsible for creating the evm.
+    evm_config: EvmConfig,
+}
+
+impl<EvmConfig> GwynethPayloadBuilder<EvmConfig> {
+    /// `GwynethPayloadBuilder` constructor.
+    pub const fn new(evm_config: EvmConfig) -> Self {
+        Self { evm_config }
+    }
+}
+
+impl<EvmConfig> GwynethPayloadBuilder<EvmConfig>
+where
+    EvmConfig: ConfigureEvm<Header = Header>,
+{
+    /// Returns the configured [`CfgEnvWithHandlerCfg`] and [`BlockEnv`] for the targeted payload
+    /// (that has the `parent` as its parent).
+    fn cfg_and_block_env(
+        &self,
+        config: &PayloadConfig<GwynethPayloadBuilderAttributes>,
+        parent: &Header,
+    ) -> Result<(CfgEnvWithHandlerCfg, BlockEnv), EvmConfig::Error> {
+        let next_attributes = NextBlockEnvAttributes {
+            timestamp: config.attributes.inner.timestamp(),
+            suggested_fee_recipient: config.attributes.suggested_fee_recipient(),
+            prev_randao: config.attributes.prev_randao(),
+        };
+        self.evm_config.next_cfg_and_block_env(parent, next_attributes)
+    }
+}
+
+// Default implementation of [PayloadBuilder] for unit type
+impl<EvmConfig, Pool, Client> PayloadBuilder<Pool, Client> for GwynethPayloadBuilder<EvmConfig>
+where
+    EvmConfig: ConfigureEvm<Header = Header>,
+    Client: StateProviderFactory + ChainSpecProvider<ChainSpec = ChainSpec>,
+    Pool: TransactionPool,
+{
+    type Attributes = GwynethPayloadBuilderAttributes;
+    type BuiltPayload = EthBuiltPayload;
+
+    fn try_build(
+        &self,
+        args: BuildArguments<Pool, Client, GwynethPayloadBuilderAttributes, EthBuiltPayload>,
+    ) -> Result<BuildOutcome<EthBuiltPayload>, PayloadBuilderError> {
+        let (cfg_env, block_env) = self
+            .cfg_and_block_env(&args.config, &args.config.parent_header)
+            .map_err(PayloadBuilderError::other)?;
+
+        let pool = args.pool.clone();
+        default_gwyneth_payload(self.evm_config.clone(), args, cfg_env, block_env, |attributes| {
+            pool.best_transactions_with_attributes(attributes)
+        })
+    }
+
+    fn build_empty_payload(
+        &self,
+        client: &Client,
+        config: PayloadConfig<GwynethPayloadBuilderAttributes>,
+    ) -> Result<EthBuiltPayload, PayloadBuilderError> {
+        let args = BuildArguments::new(
+            client,
+            // we use defaults here because for the empty payload we don't need to execute anything
+            NoopTransactionPool::default(),
+            Default::default(),
+            config,
+            Default::default(),
+            None,
+        );
+
+        let (cfg_env, block_env) = self
+            .cfg_and_block_env(&args.config, &args.config.parent_header)
+            .map_err(PayloadBuilderError::other)?;
+
+        let pool = args.pool.clone();
+
+        default_gwyneth_payload(self.evm_config.clone(), args, cfg_env, block_env, |attributes| {
+            pool.best_transactions_with_attributes(attributes)
+        })?
+        .into_payload()
+        .ok_or_else(|| PayloadBuilderError::MissingPayload)
+    }
+}
+
 
 /// Constructs an Ethereum transaction payload using the best transactions from the pool.
 ///
 /// Given build arguments including an Ethereum client, transaction pool,
 /// and configuration, this function creates a transaction payload. Returns
 /// a result indicating success with the payload or an error in case of failure.
-#[inline]
-pub fn default_gwyneth_payload_builder<EvmConfig, Pool, Client, SyncProvider>(
+// #[inline]
+// pub fn default_gwyneth_payload_builder<EvmConfig, Pool, Client, SyncProvider>(
+//     evm_config: EvmConfig,
+//     args: BuildArguments<
+//         Pool,
+//         Client,
+//         GwynethPayloadBuilderAttributes<SyncProvider>,
+//         EthBuiltPayload,
+//     >,
+// ) -> Result<BuildOutcome<EthBuiltPayload>, PayloadBuilderError>
+// where
+//     EvmConfig: ConfigureEvm,
+//     Client: StateProviderFactory,
+//     Pool: TransactionPool,
+//     SyncProvider: StateProvider,
+// {
+pub fn default_gwyneth_payload<EvmConfig, Pool, Client, F>(
     evm_config: EvmConfig,
-    args: BuildArguments<
-        Pool,
-        Client,
-        GwynethPayloadBuilderAttributes<SyncProvider>,
-        EthBuiltPayload,
-    >,
+    args: BuildArguments<Pool, Client, GwynethPayloadBuilderAttributes, EthBuiltPayload>,
+    initialized_cfg: CfgEnvWithHandlerCfg,
+    initialized_block_env: BlockEnv,
+    best_txs: F,
 ) -> Result<BuildOutcome<EthBuiltPayload>, PayloadBuilderError>
 where
-    EvmConfig: ConfigureEvm,
-    Client: StateProviderFactory,
+    EvmConfig: ConfigureEvm<Header = Header>,
+    Client: StateProviderFactory + ChainSpecProvider<ChainSpec = ChainSpec>,
     Pool: TransactionPool,
-    SyncProvider: StateProvider,
+    F: FnOnce(BestTransactionsAttributes) -> BestTransactionsIter<Pool>,
 {
     let BuildArguments { client, pool, mut cached_reads, config, cancel, best_payload } = args;
     let PayloadConfig {
-        initialized_block_env,
-        initialized_cfg,
-        parent_block,
-        attributes,
-        chain_spec,
+        parent_header,
         extra_data,
-        ..
+        attributes,
     } = config;
+
+    let chain_spec = client.chain_spec();
 
     println!("[{}] Build", chain_spec.chain().id());
 
-    let state_provider = client.state_by_block_hash(parent_block.hash())?;
+    let state_provider = client.state_by_block_hash(parent_header.hash())?;
     let state = StateProviderDatabase::new(state_provider);
     let mut sync_state = SyncStateProviderDatabase::new(Some(chain_spec.chain().id()), state);
 
     // Add all external state dependencies
-    for (&chain_id, provider) in attributes.providers.iter() {
-        //println!("Adding db for chain_id: {}", chain_id);
-        let boxed: Box<dyn StateProvider> = Box::new(provider);
-        let state_provider = StateProviderDatabase::new(boxed);
-        sync_state.add_db(chain_id, state_provider);
-    }
+    // for (&chain_id, provider) in attributes.providers.iter() {
+    //     //println!("Adding db for chain_id: {}", chain_id);
+    //     let boxed: Box<dyn StateProvider> = Box::new(provider);
+    //     let state_provider = StateProviderDatabase::new(boxed);
+    //     sync_state.add_db(chain_id, state_provider);
+    // }
 
     let mut sync_cached_reads = to_sync_cached_reads(cached_reads, chain_spec.chain.id());
     let mut sync_db = State::builder()
@@ -102,11 +225,10 @@ where
         .with_bundle_update()
         .build();
 
-    debug!(target: "payload_builder", id=%attributes.inner.id, parent_hash = ?parent_block.hash(), parent_number = parent_block.number, "building new payload");
+    debug!(target: "payload_builder", id=%attributes.inner.id, parent_hash = ?parent_header.hash(), parent_number = parent_header.number, "building new payload");
     let mut cumulative_gas_used = 0;
     let mut sum_blob_gas_used = 0;
-    let block_gas_limit: u64 =
-        initialized_block_env.gas_limit.try_into().unwrap_or(chain_spec.max_gas_limit);
+    let block_gas_limit: u64 = chain_spec.max_gas_limit;
     let base_fee = initialized_block_env.basefee.to::<u64>();
 
     //let mut executed_txs: Vec<TransactionSigned> = Vec::new();
@@ -294,12 +416,24 @@ where
     let logs_bloom = execution_outcome.block_logs_bloom(block_number).expect("Number is in range");
 
     // calculate the state root
-    let state_root = {
+    let hashed_state = HashedPostState::from_bundle_state(&execution_outcome.current_state().state);
+    let (state_root, trie_output) = {
         let state_provider = sync_db.database.0.inner.borrow_mut();
-        state_provider.db.get_db(chain_spec.chain().id()).unwrap().state_root(
-            HashedPostState::from_bundle_state(&execution_outcome.current_state().state),
-        )?
+        state_provider.db.get_db(chain_spec.chain().id()).unwrap().state_root_with_updates(hashed_state.clone()).inspect_err(|err| {
+            warn!(target: "payload_builder",
+                parent_hash=%parent_header.hash(),
+                %err,
+                "failed to calculate state root for payload"
+            );
+        })?
     };
+
+    // let state_root = {
+    //     let state_provider = sync_db.database.0.inner.borrow_mut();
+    //     state_provider.db.get_db(chain_spec.chain().id()).unwrap().state_root(
+    //         HashedPostState::from_bundle_state(&execution_outcome.current_state().state),
+    //     )?
+    // };
 
     //let state_diff = execution_outcome_to_state_diff(&execution_outcome, state_root, cumulative_gas_used);
 
@@ -320,7 +454,9 @@ where
     //     .map(|(root, updates)| (root, Some(updates)))
     //     .map_err(ProviderError::from)?;
 
-    let executed_txs = attributes.transactions.iter().cloned().map(|tx| tx.1.try_into_ecrecovered().unwrap().into_signed()).collect::<Vec<_>>();
+    let executed_txs = attributes.transactions.iter().cloned().map(|tx| tx.try_into_ecrecovered().unwrap().into_signed()).collect::<Vec<_>>();
+    let executed_senders = attributes.transactions.iter().cloned().map(|tx| tx.try_into_ecrecovered().unwrap().signer()).collect::<Vec<_>>();
+
 
     // create the block header
     //let transactions_root = proofs::calculate_transaction_root(&executed_txs);
@@ -330,7 +466,7 @@ where
     //let extra_data = Bytes::from(bincode::serialize(&state_diff).unwrap());
 
     let header = Header {
-        parent_hash: parent_block.hash(),
+        parent_hash: parent_header.hash(),
         ommers_hash: EMPTY_OMMER_ROOT_HASH,
         beneficiary: initialized_block_env.coinbase.1,
         state_root: state_diff.state_root,
@@ -340,9 +476,9 @@ where
         logs_bloom,
         timestamp: attributes.inner.timestamp,
         mix_hash: attributes.inner.prev_randao,
-        nonce: BEACON_NONCE,
+        nonce: BEACON_NONCE.into(),
         base_fee_per_gas: Some(base_fee),
-        number: parent_block.number + 1,
+        number: parent_header.number + 1,
         gas_limit: block_gas_limit,
         difficulty: U256::ZERO,
         //gas_used: cumulative_gas_used,
@@ -351,7 +487,7 @@ where
         parent_beacon_block_root: attributes.inner.parent_beacon_block_root,
         blob_gas_used: Some(0),
         excess_blob_gas: Some(0),
-        requests_root: None,
+        requests_hash: None,
     };
 
     //println!("header: {:?}", header);
@@ -367,9 +503,17 @@ where
     //println!("reverts: {:?}", state_diff.bundle.reverts);
 
     // seal the block
-    let block = Block { header, body: executed_txs, ommers: vec![], withdrawals: Some(Withdrawals::default()), requests: Some(Requests::default()) };
+    let block = Block {
+        header,
+        body: BlockBody {
+            transactions: executed_txs,
+            ommers: vec![],
+            withdrawals: Some(Withdrawals::default()),
+            //requests: Some(Requests::default()),
+        },
+    };
 
-    let sealed_block = block.seal_slow();
+    let sealed_block = Arc::new(block.seal_slow());
     //sealed_block.state_diff = Some(execution_outcome_to_state_diff(&execution_outcome));
 
     //println!("block hash: {:?}", sealed_block.hash());
@@ -380,18 +524,31 @@ where
 
     debug!(target: "payload_builder", ?sealed_block, "sealed built block");
 
-    let payload = EthBuiltPayload::new(attributes.inner.id, sealed_block, total_fees);
+    // create the executed block data
+    let executed = ExecutedBlock {
+        block: sealed_block.clone(),
+        senders: Arc::new(executed_senders),
+        execution_output: Arc::new(execution_outcome),
+        hashed_state: Arc::new(hashed_state),
+        trie: Arc::new(trie_output),
+    };
+
+    let requests = Requests::default();
+    let mut payload =
+        EthBuiltPayload::new(attributes.inner.id, sealed_block, total_fees, Some(executed), Some(requests));
+
+    //let payload = EthBuiltPayload::new(attributes.inner.id, sealed_block, total_fees);
 
     Ok(BuildOutcome::Better { payload, cached_reads: /*sync_cached_reads.into())*/ CachedReads::default() })
 }
 
-pub fn build_execution_outcome<DB: SyncDatabase>(
-    sync_db: &mut State<DB>,
-    receipts: Receipts,
-    first_block: BlockNumber,
-    requests: Vec<Requests>,
-) -> HashMap<ChainId, ExecutionOutcome> {
-    let bundle_states = sync_db.take_bundle();
+// pub fn build_execution_outcome<DB: SyncDatabase>(
+//     sync_db: &mut State<DB>,
+//     receipts: Receipts,
+//     first_block: BlockNumber,
+//     requests: Vec<Requests>,
+// ) -> HashMap<ChainId, ExecutionOutcome> {
+//     let bundle_states = sync_db.take_bundle();
 
-    todo!()
-}
+//     todo!()
+// }

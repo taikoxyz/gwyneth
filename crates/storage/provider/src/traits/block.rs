@@ -1,7 +1,7 @@
+use alloy_primitives::BlockNumber;
 use reth_db_api::models::StoredBlockBodyIndices;
 use reth_execution_types::{Chain, ExecutionOutcome};
-use reth_primitives::{BlockNumber, SealedBlockWithSenders};
-use reth_storage_api::BlockReader;
+use reth_primitives::SealedBlockWithSenders;
 use reth_storage_errors::provider::ProviderResult;
 use reth_trie::{updates::TrieUpdates, HashedPostStateSorted};
 use std::ops::RangeInclusive;
@@ -22,19 +22,19 @@ pub trait BlockExecutionWriter: BlockWriter + Send + Sync {
     ) -> ProviderResult<()>;
 }
 
-/// BlockExecution Writer
+/// This just receives state, or [`ExecutionOutcome`], from the provider
 #[auto_impl::auto_impl(&, Arc, Box)]
-pub trait BlockExecutionReader: BlockReader + Send + Sync {
-    /// Get range of blocks and its execution result
-    fn get_block_and_execution_range(
-        &self,
-        range: RangeInclusive<BlockNumber>,
-    ) -> ProviderResult<Chain>;
+pub trait StateReader: Send + Sync {
+    /// Get the [`ExecutionOutcome`] for the given block
+    fn get_state(&self, block: BlockNumber) -> ProviderResult<Option<ExecutionOutcome>>;
 }
 
 /// Block Writer
 #[auto_impl::auto_impl(&, Arc, Box)]
 pub trait BlockWriter: Send + Sync {
+    /// The body this writer can write.
+    type Body: Send + Sync;
+
     /// Insert full block and make it canonical. Parent tx num and transition id is taken from
     /// parent block in database.
     ///
@@ -42,6 +42,16 @@ pub trait BlockWriter: Send + Sync {
     /// transition in the block.
     fn insert_block(&self, block: SealedBlockWithSenders)
         -> ProviderResult<StoredBlockBodyIndices>;
+
+    /// Appends a batch of block bodies extending the canonical chain. This is invoked during
+    /// `Bodies` stage and does not write to `TransactionHashNumbers` and `TransactionSenders`
+    /// tables which are populated on later stages.
+    ///
+    /// Bodies are passed as [`Option`]s, if body is `None` the corresponding block is empty.
+    fn append_block_bodies(
+        &self,
+        bodies: impl Iterator<Item = (BlockNumber, Option<Self::Body>)>,
+    ) -> ProviderResult<()>;
 
     /// Appends a batch of sealed blocks to the blockchain, including sender information, and
     /// updates the post-state.

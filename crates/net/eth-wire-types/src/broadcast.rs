@@ -1,15 +1,14 @@
 //! Types for broadcasting new data.
 
-use crate::{EthMessage, EthVersion};
+use crate::{EthMessage, EthVersion, NetworkPrimitives};
 use alloy_rlp::{
     Decodable, Encodable, RlpDecodable, RlpDecodableWrapper, RlpEncodable, RlpEncodableWrapper,
 };
 
+use alloy_primitives::{Bytes, TxHash, B256, U128};
 use derive_more::{Constructor, Deref, DerefMut, From, IntoIterator};
-use reth_codecs_derive::add_arbitrary_tests;
-use reth_primitives::{
-    Block, Bytes, PooledTransactionsElement, TransactionSigned, TxHash, B256, U128,
-};
+use reth_codecs_derive::{add_arbitrary_tests, generate_tests};
+use reth_primitives::{PooledTransactionsElement, TransactionSigned};
 
 use std::{
     collections::{HashMap, HashSet},
@@ -76,13 +75,14 @@ impl From<NewBlockHashes> for Vec<BlockHashNumber> {
 #[derive(Clone, Debug, PartialEq, Eq, RlpEncodable, RlpDecodable, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(any(test, feature = "arbitrary"), derive(arbitrary::Arbitrary))]
-#[add_arbitrary_tests(rlp, 25)]
-pub struct NewBlock {
+pub struct NewBlock<B = reth_primitives::Block> {
     /// A new block.
-    pub block: Block,
+    pub block: B,
     /// The current total difficulty.
     pub td: U128,
 }
+
+generate_tests!(#[rlp, 25] NewBlock<reth_primitives::Block>, EthNewBlockTests);
 
 /// This informs peers of transactions that have appeared on the network and are not yet included
 /// in a block.
@@ -270,7 +270,7 @@ impl NewPooledTransactionHashes {
     }
 }
 
-impl From<NewPooledTransactionHashes> for EthMessage {
+impl<N: NetworkPrimitives> From<NewPooledTransactionHashes> for EthMessage<N> {
     fn from(value: NewPooledTransactionHashes) -> Self {
         match value {
             NewPooledTransactionHashes::Eth66(msg) => Self::NewPooledTransactionHashes66(msg),
@@ -619,13 +619,13 @@ impl<V> PartiallyValidData<V> {
     /// Returns a new [`PartiallyValidData`] with empty data from an [`Eth68`](EthVersion::Eth68)
     /// announcement.
     pub fn empty_eth68() -> Self {
-        Self::from_raw_data_eth68(HashMap::new())
+        Self::from_raw_data_eth68(HashMap::default())
     }
 
     /// Returns a new [`PartiallyValidData`] with empty data from an [`Eth66`](EthVersion::Eth66)
     /// announcement.
     pub fn empty_eth66() -> Self {
-        Self::from_raw_data_eth66(HashMap::new())
+        Self::from_raw_data_eth66(HashMap::default())
     }
 
     /// Returns the version of the message this data was received in if different versions of the
@@ -705,7 +705,7 @@ impl RequestTxHashes {
 
     /// Returns an new empty instance.
     fn empty() -> Self {
-        Self::new(HashSet::new())
+        Self::new(HashSet::default())
     }
 
     /// Retains the given number of elements, returning and iterator over the rest.
@@ -733,14 +733,14 @@ impl RequestTxHashes {
 
 impl FromIterator<(TxHash, Eth68TxMetadata)> for RequestTxHashes {
     fn from_iter<I: IntoIterator<Item = (TxHash, Eth68TxMetadata)>>(iter: I) -> Self {
-        Self::new(iter.into_iter().map(|(hash, _)| hash).collect::<HashSet<_>>())
+        Self::new(iter.into_iter().map(|(hash, _)| hash).collect())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reth_primitives::{b256, hex};
+    use alloy_primitives::{b256, hex};
     use std::str::FromStr;
 
     /// Takes as input a struct / encoded hex message pair, ensuring that we encode to the exact hex

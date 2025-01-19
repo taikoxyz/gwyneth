@@ -1,9 +1,7 @@
 //! Builder for creating an EVM with a database and environment.
 
-#[cfg(not(feature = "std"))]
 use alloc::boxed::Box;
-
-use revm::{inspector_handle_register, Evm, EvmBuilder, GetInspector, SyncDatabase};
+use revm::{inspector_handle_register, Database, Evm, EvmBuilder, GetInspector, SyncDatabase};
 use revm_primitives::EnvWithHandlerCfg;
 
 /// Builder for creating an EVM with a database and environment.

@@ -1,12 +1,14 @@
 //! Connection tests
 
-use std::{collections::HashSet, net::SocketAddr, time::Duration};
+use std::{net::SocketAddr, time::Duration};
 
 use alloy_node_bindings::Geth;
+use alloy_primitives::map::HashSet;
 use alloy_provider::{ext::AdminApi, ProviderBuilder};
 use futures::StreamExt;
+use reth_chainspec::MAINNET;
 use reth_discv4::Discv4Config;
-use reth_eth_wire::{DisconnectReason, HeadersDirection};
+use reth_eth_wire::{DisconnectReason, EthNetworkPrimitives, HeadersDirection};
 use reth_net_banlist::BanList;
 use reth_network::{
     test_utils::{enr_to_peer_id, NetworkEventStream, PeerConfig, Testnet, GETH_TIMEOUT},
@@ -202,8 +204,9 @@ async fn test_connect_with_boot_nodes() {
     let mut discv4 = Discv4Config::builder();
     discv4.add_boot_nodes(mainnet_nodes());
 
-    let config =
-        NetworkConfigBuilder::new(secret_key).discovery(discv4).build(NoopProvider::default());
+    let config = NetworkConfigBuilder::<EthNetworkPrimitives>::new(secret_key)
+        .discovery(discv4)
+        .build(NoopProvider::default());
     let network = NetworkManager::new(config).await.unwrap();
 
     let handle = network.handle().clone();
@@ -327,7 +330,7 @@ async fn test_incoming_node_id_blacklist() {
         let enr = provider.node_info().await.unwrap().enr;
         let geth_peer_id = enr_to_peer_id(enr.parse().unwrap());
 
-        let ban_list = BanList::new(vec![geth_peer_id], HashSet::new());
+        let ban_list = BanList::new(vec![geth_peer_id], vec![]);
         let peer_config = PeersConfig::default().with_ban_list(ban_list);
 
         let config = NetworkConfigBuilder::new(secret_key)
@@ -570,7 +573,7 @@ async fn test_disconnect_incoming_when_exceeded_incoming_connections() {
     let secret_key = SecretKey::new(&mut rand::thread_rng());
     let peers_config = PeersConfig::default().with_max_inbound(0);
 
-    let config = NetworkConfigBuilder::new(secret_key)
+    let config = NetworkConfigBuilder::<EthNetworkPrimitives>::new(secret_key)
         .listener_port(0)
         .disable_discovery()
         .peer_config(peers_config)
@@ -688,7 +691,7 @@ async fn new_random_peer(max_in_bound: usize, trusted_nodes: Vec<TrustedPeer>) -
         .listener_port(0)
         .disable_discovery()
         .peer_config(peers_config)
-        .build_with_noop_provider();
+        .build_with_noop_provider(MAINNET.clone());
 
     NetworkManager::new(config).await.unwrap()
 }

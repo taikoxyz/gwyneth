@@ -1,5 +1,4 @@
 use crate::PipelineEvent;
-use alloy_primitives::{BlockNumber, TxNumber};
 use reth_consensus::ConsensusError;
 use reth_errors::{BlockExecutionError, DatabaseError, RethError};
 use reth_network_p2p::error::DownloadError;
@@ -100,31 +99,12 @@ pub enum StageError {
         /// Static File segment
         segment: StaticFileSegment,
     },
-    /// Unrecoverable inconsistency error related to a transaction number in a static file segment.
-    #[error(
-        "inconsistent transaction number for {segment}. db: {database}, static_file: {static_file}"
-    )]
-    InconsistentTxNumber {
-        /// Static File segment where this error was encountered.
-        segment: StaticFileSegment,
-        /// Expected database transaction number.
-        database: TxNumber,
-        /// Expected static file transaction number.
-        static_file: TxNumber,
-    },
-    /// Unrecoverable inconsistency error related to a block number in a static file segment.
-    #[error("inconsistent block number for {segment}. db: {database}, static_file: {static_file}")]
-    InconsistentBlockNumber {
-        /// Static File segment where this error was encountered.
-        segment: StaticFileSegment,
-        /// Expected database block number.
-        database: BlockNumber,
-        /// Expected static file block number.
-        static_file: BlockNumber,
-    },
     /// The prune checkpoint for the given segment is missing.
     #[error("missing prune checkpoint for {0}")]
     MissingPruneCheckpoint(PruneSegment),
+    /// Post Execute Commit error
+    #[error("post execute commit error occurred: {_0}")]
+    PostExecuteCommit(&'static str),
     /// Internal error
     #[error(transparent)]
     Internal(#[from] RethError),
@@ -133,12 +113,12 @@ pub enum StageError {
     /// These types of errors are caught by the [Pipeline][crate::Pipeline] and trigger a restart
     /// of the stage.
     #[error(transparent)]
-    Recoverable(Box<dyn std::error::Error + Send + Sync>),
+    Recoverable(Box<dyn core::error::Error + Send + Sync>),
     /// The stage encountered a fatal error.
     ///
     /// These types of errors stop the pipeline.
     #[error(transparent)]
-    Fatal(Box<dyn std::error::Error + Send + Sync>),
+    Fatal(Box<dyn core::error::Error + Send + Sync>),
 }
 
 impl StageError {
@@ -153,8 +133,6 @@ impl StageError {
                 Self::MissingDownloadBuffer |
                 Self::MissingSyncGap |
                 Self::ChannelClosed |
-                Self::InconsistentBlockNumber { .. } |
-                Self::InconsistentTxNumber { .. } |
                 Self::Internal(_) |
                 Self::Fatal(_)
         )
@@ -185,4 +163,7 @@ pub enum PipelineError {
     /// Internal error
     #[error(transparent)]
     Internal(#[from] RethError),
+    /// The pipeline encountered an unwind when `fail_on_unwind` was set to `true`.
+    #[error("unexpected unwind")]
+    UnexpectedUnwind,
 }

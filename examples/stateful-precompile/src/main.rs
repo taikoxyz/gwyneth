@@ -2,33 +2,36 @@
 
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 
+use alloy_consensus::Header;
 use alloy_genesis::Genesis;
+use alloy_primitives::{Address, Bytes, U256};
 use parking_lot::RwLock;
 use reth::{
+    api::NextBlockEnvAttributes,
     builder::{components::ExecutorBuilder, BuilderContext, NodeBuilder},
-    primitives::{
-        revm_primitives::{CfgEnvWithHandlerCfg, Env, PrecompileResult, TxEnv},
-        Address, Bytes, U256,
-    },
     revm::{
         handler::register::EvmHandler,
         inspector_handle_register,
         precompile::{Precompile, PrecompileSpecId},
-        ContextPrecompile, ContextPrecompiles, Evm, EvmBuilder, GetInspector, SyncDatabase as Database,
+        primitives::{
+            BlockEnv, CfgEnvWithHandlerCfg, Env, PrecompileResult, SpecId, StatefulPrecompileMut,
+            TxEnv,
+        },
+        ContextPrecompile, ContextPrecompiles, SyncDatabase as Database, Evm, EvmBuilder, GetInspector,
     },
     tasks::TaskManager,
 };
 use reth_chainspec::{Chain, ChainSpec};
-use reth_node_api::{ConfigureEvm, ConfigureEvmEnv, FullNodeTypes};
+use reth_node_api::{ConfigureEvm, ConfigureEvmEnv, FullNodeTypes, NodeTypes};
 use reth_node_core::{args::RpcServerArgs, node_config::NodeConfig};
-use reth_node_ethereum::{node::EthereumAddOns, EthEvmConfig, EthExecutorProvider, EthereumNode};
-use reth_primitives::{
-    revm_primitives::{SpecId, StatefulPrecompileMut},
-    Header, TransactionSigned,
+use reth_node_ethereum::{
+    node::EthereumAddOns, BasicBlockExecutorProvider, EthEvmConfig, EthExecutionStrategyFactory,
+    EthereumNode,
 };
+use reth_primitives::TransactionSigned;
 use reth_tracing::{RethTracer, Tracer};
 use schnellru::{ByLength, LruMap};
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, convert::Infallible, sync::Arc};
 
 /// Type alias for the LRU cache used within the [`PrecompileCache`].
 type PrecompileLRUCache = LruMap<(Bytes, u64), PrecompileResult>;
@@ -50,13 +53,19 @@ pub struct PrecompileCache {
 }
 
 /// Custom EVM configuration
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct MyEvmConfig {
+    inner: EthEvmConfig,
     precompile_cache: Arc<RwLock<PrecompileCache>>,
 }
 
 impl MyEvmConfig {
+    /// Creates a new instance.
+    pub fn new(chain_spec: Arc<ChainSpec>) -> Self {
+        Self { inner: EthEvmConfig::new(chain_spec), precompile_cache: Default::default() }
+    }
+
     /// Sets the precompiles to the EVM handler
     ///
     /// This will be invoked when the EVM is created via [ConfigureEvm::evm] or
@@ -138,18 +147,11 @@ impl StatefulPrecompileMut for WrappedPrecompile {
 }
 
 impl ConfigureEvmEnv for MyEvmConfig {
-    fn fill_tx_env(&self, tx_env: &mut TxEnv, transaction: &TransactionSigned, sender: Address) {
-        EthEvmConfig::default().fill_tx_env(tx_env, transaction, sender)
-    }
+    type Header = Header;
+    type Error = Infallible;
 
-    fn fill_cfg_env(
-        &self,
-        cfg_env: &mut CfgEnvWithHandlerCfg,
-        chain_spec: &ChainSpec,
-        header: &Header,
-        total_difficulty: U256,
-    ) {
-        EthEvmConfig::default().fill_cfg_env(cfg_env, chain_spec, header, total_difficulty)
+    fn fill_tx_env(&self, tx_env: &mut TxEnv, transaction: &TransactionSigned, sender: Address) {
+        self.inner.fill_tx_env(tx_env, transaction, sender)
     }
 
     fn fill_tx_env_system_contract_call(
@@ -159,7 +161,24 @@ impl ConfigureEvmEnv for MyEvmConfig {
         contract: Address,
         data: Bytes,
     ) {
-        EthEvmConfig::default().fill_tx_env_system_contract_call(env, caller, contract, data)
+        self.inner.fill_tx_env_system_contract_call(env, caller, contract, data)
+    }
+
+    fn fill_cfg_env(
+        &self,
+        cfg_env: &mut CfgEnvWithHandlerCfg,
+        header: &Self::Header,
+        total_difficulty: U256,
+    ) {
+        self.inner.fill_cfg_env(cfg_env, header, total_difficulty)
+    }
+
+    fn next_cfg_and_block_env(
+        &self,
+        parent: &Self::Header,
+        attributes: NextBlockEnvAttributes,
+    ) -> Result<(CfgEnvWithHandlerCfg, BlockEnv), Self::Error> {
+        self.inner.next_cfg_and_block_env(parent, attributes)
     }
 }
 
@@ -207,17 +226,26 @@ pub struct MyExecutorBuilder {
 
 impl<Node> ExecutorBuilder<Node> for MyExecutorBuilder
 where
-    Node: FullNodeTypes,
+    Node: FullNodeTypes<Types: NodeTypes<ChainSpec = ChainSpec>>,
 {
     type EVM = MyEvmConfig;
-    type Executor = EthExecutorProvider<Self::EVM>;
+    type Executor = BasicBlockExecutorProvider<EthExecutionStrategyFactory<Self::EVM>>;
 
     async fn build_evm(
         self,
         ctx: &BuilderContext<Node>,
     ) -> eyre::Result<(Self::EVM, Self::Executor)> {
-        let evm_config = MyEvmConfig { precompile_cache: self.precompile_cache.clone() };
-        Ok((evm_config.clone(), EthExecutorProvider::new(ctx.chain_spec(), evm_config)))
+        let evm_config = MyEvmConfig {
+            inner: EthEvmConfig::new(ctx.chain_spec()),
+            precompile_cache: self.precompile_cache.clone(),
+        };
+        Ok((
+            evm_config.clone(),
+            BasicBlockExecutorProvider::new(EthExecutionStrategyFactory::new(
+                ctx.chain_spec(),
+                evm_config,
+            )),
+        ))
     }
 }
 
@@ -246,7 +274,7 @@ async fn main() -> eyre::Result<()> {
         .with_types::<EthereumNode>()
         // use default ethereum components but with our executor
         .with_components(EthereumNode::components().executor(MyExecutorBuilder::default()))
-        .with_add_ons::<EthereumAddOns>()
+        .with_add_ons(EthereumAddOns::default())
         .launch()
         .await
         .unwrap();

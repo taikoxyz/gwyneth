@@ -17,7 +17,7 @@ mod traits;
 use std::{collections::HashMap, sync::{Arc, LazyLock}};
 
 use providers::BlockchainProvider;
-use reth_db::{test_utils::TempDatabase, DatabaseEnv};
+use reth_db::DatabaseEnv;
 use std::sync::Mutex;
 pub use traits::*;
 
@@ -51,6 +51,9 @@ pub use reth_chain_state::{
     CanonStateNotifications, CanonStateSubscriptions,
 };
 
+// reexport traits to avoid breaking changes
+pub use reth_storage_api::{HistoryWriter, StatsReader};
+
 pub(crate) fn to_range<R: std::ops::RangeBounds<u64>>(bounds: R) -> std::ops::Range<u64> {
     let start = match bounds.start_bound() {
         std::ops::Bound::Included(&v) => v,
@@ -67,12 +70,19 @@ pub(crate) fn to_range<R: std::ops::RangeBounds<u64>>(bounds: R) -> std::ops::Ra
     start..end
 }
 
-/// All chain providers being synced in this node
+use reth_node_types::NodeTypesWithDBAdapter;
+use reth_chainspec::ChainSpec;
+
+// All chain providers being synced in this node
 // pub static NODES: LazyLock<Mutex<HashMap<u64, ProviderFactory<DatabaseEnv>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 // pub static NODES: LazyLock<Mutex<HashMap<u64, ProviderFactory<BlockchainProvider<Arc<TempDatabase<DatabaseEnv>>>>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 
-pub static NODES: LazyLock<Mutex<HashMap<u64, BlockchainProvider<Arc<DatabaseEnv>>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+// This one
+//pub static NODES: LazyLock<Mutex<HashMap<u64, BlockchainProvider<Arc<DatabaseEnv>>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+//pub static NODES: LazyLock<Mutex<HashMap<u64, BlockchainProvider<NodeTypesWithDBAdapter<GwynethNode, Arc<DatabaseEnv>>>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+
 //pub static NODES: LazyLock<Mutex<HashMap<u64, ProviderFactory<Arc<DatabaseEnv>>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 // pub static NODES: LazyLock<Mutex<HashMap<u64, ProviderFactory<BlockchainProvider<Arc<TempDatabase<DatabaseEnv>>>>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));

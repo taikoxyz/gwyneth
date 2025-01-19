@@ -2,17 +2,15 @@
 
 #![allow(clippy::type_complexity, missing_debug_implementations)]
 
-pub mod add_ons;
-mod states;
-
-use reth_db::mdbx::DatabaseArguments;
-use reth_rpc_types::WithOtherFields;
-pub use states::*;
-
-use std::{fs, path::PathBuf, sync::Arc};
-
+use crate::{
+    common::WithConfigs,
+    components::NodeComponentsBuilder,
+    node::FullNode,
+    rpc::{RethRpcAddOns, RethRpcServerHandles, RpcContext},
+    DefaultNodeLauncher, LaunchNode, Node, NodeHandle,
+};
 use futures::Future;
-use reth_chainspec::ChainSpec;
+use reth_chainspec::{EthChainSpec, EthereumHardforks, Hardforks};
 use reth_cli_util::get_secret_key;
 use reth_db_api::{
     database::Database,
@@ -20,35 +18,44 @@ use reth_db_api::{
 };
 use reth_exex::ExExContext;
 use reth_network::{
-    NetworkBuilder, NetworkConfig, NetworkConfigBuilder, NetworkHandle, NetworkManager,
+    transactions::TransactionsManagerConfig, NetworkBuilder, NetworkConfig, NetworkConfigBuilder,
+    NetworkHandle, NetworkManager,
 };
-use reth_node_api::{FullNodeTypes, FullNodeTypesAdapter, NodeAddOns, NodeTypes};
+use reth_node_api::{
+    FullNodeTypes, FullNodeTypesAdapter, NodeAddOns, NodeTypes, NodeTypesWithDBAdapter,
+    NodeTypesWithEngine,
+};
 use reth_node_core::{
     cli::config::{PayloadBuilderConfig, RethTransactionPoolConfig},
     dirs::{ChainPath, DataDirPath},
     node_config::NodeConfig,
     primitives::Head,
-    rpc::eth::{helpers::AddDevSigners, FullEthApiServer},
 };
-use reth_primitives::revm_primitives::EnvKzgSettings;
 use reth_provider::{providers::BlockchainProvider, ChainSpecProvider, FullProvider};
 use reth_tasks::TaskExecutor;
 use reth_transaction_pool::{PoolConfig, TransactionPool};
+use revm_primitives::EnvKzgSettings;
 use secp256k1::SecretKey;
+use std::sync::Arc;
 use tracing::{info, trace, warn};
 
-use crate::{
-    common::WithConfigs,
-    components::NodeComponentsBuilder,
-    node::FullNode,
-    rpc::{EthApiBuilderProvider, RethRpcServerHandles, RpcContext},
-    DefaultNodeLauncher, LaunchNode, Node, NodeHandle,
-};
+use std::path::PathBuf;
+use std::fs;
+use reth_db::mdbx::DatabaseArguments;
+
+pub mod add_ons;
+
+mod states;
+pub use states::*;
 
 /// The adapter type for a reth node with the builtin provider type
 // Note: we need to hardcode this because custom components might depend on it in associated types.
-pub type RethFullAdapter<DB, Types> = FullNodeTypesAdapter<Types, DB, BlockchainProvider<DB>>;
+pub type RethFullAdapter<DB, Types> = FullNodeTypesAdapter<
+    NodeTypesWithDBAdapter<Types, DB>,
+    BlockchainProvider<NodeTypesWithDBAdapter<Types, DB>>,
+>;
 
+#[allow(clippy::doc_markdown)]
 #[cfg_attr(doc, aquamarine::aquamarine)]
 /// Declaratively construct a node.
 ///
@@ -58,8 +65,8 @@ pub type RethFullAdapter<DB, Types> = FullNodeTypesAdapter<Types, DB, Blockchain
 /// ## Order
 ///
 /// Configuring a node starts out with a [`NodeConfig`] (this can be obtained from cli arguments for
-/// example) and then proceeds to configure the core static types of the node: [`NodeTypes`], these
-/// include the node's primitive types and the node's engine types.
+/// example) and then proceeds to configure the core static types of the node:
+/// [`NodeTypesWithEngine`], these include the node's primitive types and the node's engine types.
 ///
 /// Next all stateful components of the node are configured, these include all the
 /// components of the node that are downstream of those types, these include:
@@ -75,7 +82,7 @@ pub type RethFullAdapter<DB, Types> = FullNodeTypesAdapter<Types, DB, Blockchain
 /// configured components and can interact with the node.
 ///
 /// There are convenience functions for networks that come with a preset of types and components via
-/// the [Node] trait, see `reth_node_ethereum::EthereumNode` or `reth_node_optimism::OptimismNode`.
+/// the [`Node`] trait, see `reth_node_ethereum::EthereumNode` or `reth_optimism_node::OpNode`.
 ///
 /// The [`NodeBuilder::node`] function configures the node's types and components in one step.
 ///
@@ -121,14 +128,14 @@ pub type RethFullAdapter<DB, Types> = FullNodeTypesAdapter<Types, DB, Blockchain
 ///
 /// The following diagram shows the flow of the node builder from CLI to a launched node.
 ///
-/// `include_mmd!("docs/mermaid/builder.mmd`")
+/// include_mmd!("docs/mermaid/builder.mmd")
 ///
 /// ## Internals
 ///
-/// The node builder is fully type safe, it uses the [`NodeTypes`] trait to enforce that all
-/// components are configured with the correct types. However the database types and with that the
-/// provider trait implementations are currently created by the builder itself during the launch
-/// process, hence the database type is not part of the [`NodeTypes`] trait and the node's
+/// The node builder is fully type safe, it uses the [`NodeTypesWithEngine`] trait to enforce that
+/// all components are configured with the correct types. However the database types and with that
+/// the provider trait implementations are currently created by the builder itself during the launch
+/// process, hence the database type is not part of the [`NodeTypesWithEngine`] trait and the node's
 /// components, that depend on the database, are configured separately. In order to have a nice
 /// trait that encapsulates the entire node the
 /// [`FullNodeComponents`](reth_node_api::FullNodeComponents) trait was introduced. This
@@ -145,28 +152,55 @@ pub type RethFullAdapter<DB, Types> = FullNodeTypesAdapter<Types, DB, Blockchain
 /// configured by the builder itself during launch. This might change in the future.
 ///
 /// [builder]: https://doc.rust-lang.org/1.0.0/style/ownership/builders.html
-pub struct NodeBuilder<DB> {
+pub struct NodeBuilder<DB, ChainSpec> {
     /// All settings for how the node should be configured.
-    config: NodeConfig,
+    config: NodeConfig<ChainSpec>,
     /// The configured database for the node.
     database: DB,
 }
 
-impl NodeBuilder<()> {
+impl<ChainSpec> NodeBuilder<(), ChainSpec> {
     /// Create a new [`NodeBuilder`].
-    pub const fn new(config: NodeConfig) -> Self {
+    pub const fn new(config: NodeConfig<ChainSpec>) -> Self {
         Self { config, database: () }
+    }
+
+    /// Apply a function to the builder
+    pub fn apply<F>(self, f: F) -> Self
+    where
+        F: FnOnce(Self) -> Self,
+    {
+        f(self)
+    }
+
+    /// Apply a function to the builder, if the condition is `true`.
+    pub fn apply_if<F>(self, cond: bool, f: F) -> Self
+    where
+        F: FnOnce(Self) -> Self,
+    {
+        if cond {
+            f(self)
+        } else {
+            self
+        }
     }
 }
 
-impl<DB> NodeBuilder<DB> {
+impl<DB, ChainSpec> NodeBuilder<DB, ChainSpec> {
     /// Returns a reference to the node builder's config.
-    pub const fn config(&self) -> &NodeConfig {
+    pub const fn config(&self) -> &NodeConfig<ChainSpec> {
         &self.config
     }
 
+    /// Returns a mutable reference to the node builder's config.
+    pub fn config_mut(&mut self) -> &mut NodeConfig<ChainSpec> {
+        &mut self.config
+    }
+}
+
+impl<DB, ChainSpec: EthChainSpec> NodeBuilder<DB, ChainSpec> {
     /// Configures the underlying database that the node will use.
-    pub fn with_database<D>(self, database: D) -> NodeBuilder<D> {
+    pub fn with_database<D>(self, database: D) -> NodeBuilder<D, ChainSpec> {
         NodeBuilder { config: self.config, database }
     }
 
@@ -182,7 +216,7 @@ impl<DB> NodeBuilder<DB> {
         mut self,
         task_executor: TaskExecutor,
         chain_id: u64,
-    ) -> WithLaunchContext<NodeBuilder<Arc<reth_db::DatabaseEnv>>>
+    ) -> WithLaunchContext<NodeBuilder<Arc<reth_db::DatabaseEnv>, ChainSpec>>
     {
         let folder_name = format!("/data/reth/gwyneth-{}/", chain_id);
         let path = reth_node_core::dirs::MaybePlatformPath::<DataDirPath>::from(
@@ -199,7 +233,7 @@ impl<DB> NodeBuilder<DB> {
         });
 
         let data_dir =
-            path.unwrap_or_chain_default(self.config.chain.chain, self.config.datadir.clone());
+            path.unwrap_or_chain_default(self.config.chain.chain(), self.config.datadir.clone());
 
         println!("data_dir: {:?}", data_dir);
 
@@ -208,15 +242,14 @@ impl<DB> NodeBuilder<DB> {
         WithLaunchContext { builder: self.with_database(db), task_executor }
     }
 
-
-
     /// Creates an _ephemeral_ preconfigured node for testing purposes.
     //#[cfg(feature = "test-utils")]
     pub fn testing_node(
         mut self,
         task_executor: TaskExecutor,
-    ) -> WithLaunchContext<NodeBuilder<Arc<reth_db::test_utils::TempDatabase<reth_db::DatabaseEnv>>>>
-    {
+    ) -> WithLaunchContext<
+        NodeBuilder<Arc<reth_db::test_utils::TempDatabase<reth_db::DatabaseEnv>>, ChainSpec>,
+    > {
         let path = reth_node_core::dirs::MaybePlatformPath::<DataDirPath>::from(
             reth_db::test_utils::tempdir_path(),
         );
@@ -226,7 +259,7 @@ impl<DB> NodeBuilder<DB> {
         });
 
         let data_dir =
-            path.unwrap_or_chain_default(self.config.chain.chain, self.config.datadir.clone());
+            path.unwrap_or_chain_default(self.config.chain.chain(), self.config.datadir.clone());
 
         let db = reth_db::test_utils::create_test_rw_db_with_path(data_dir.db());
 
@@ -234,14 +267,15 @@ impl<DB> NodeBuilder<DB> {
     }
 }
 
-impl<DB> NodeBuilder<DB>
+impl<DB, ChainSpec> NodeBuilder<DB, ChainSpec>
 where
     DB: Database + DatabaseMetrics + DatabaseMetadata + Clone + Unpin + 'static,
+    ChainSpec: EthChainSpec + EthereumHardforks,
 {
     /// Configures the types of the node.
     pub fn with_types<T>(self) -> NodeBuilderWithTypes<RethFullAdapter<DB, T>>
     where
-        T: NodeTypes<ChainSpec = ChainSpec>,
+        T: NodeTypesWithEngine<ChainSpec = ChainSpec>,
     {
         self.with_types_and_provider()
     }
@@ -249,10 +283,10 @@ where
     /// Configures the types of the node and the provider type that will be used by the node.
     pub fn with_types_and_provider<T, P>(
         self,
-    ) -> NodeBuilderWithTypes<FullNodeTypesAdapter<T, DB, P>>
+    ) -> NodeBuilderWithTypes<FullNodeTypesAdapter<NodeTypesWithDBAdapter<T, DB>, P>>
     where
-        T: NodeTypes<ChainSpec = ChainSpec>,
-        P: FullProvider<DB, T::ChainSpec>,
+        T: NodeTypesWithEngine<ChainSpec = ChainSpec>,
+        P: FullProvider<NodeTypesWithDBAdapter<T, DB>>,
     {
         NodeBuilderWithTypes::new(self.config, self.database)
     }
@@ -267,7 +301,7 @@ where
     where
         N: Node<RethFullAdapter<DB, N>, ChainSpec = ChainSpec>,
     {
-        self.with_types().with_components(node.components_builder()).with_add_ons::<N::AddOns>()
+        self.with_types().with_components(node.components_builder()).with_add_ons(node.add_ons())
     }
 }
 
@@ -287,19 +321,22 @@ impl<Builder> WithLaunchContext<Builder> {
     }
 }
 
-impl<DB> WithLaunchContext<NodeBuilder<DB>>
-where
-    DB: Database + DatabaseMetrics + DatabaseMetadata + Clone + Unpin + 'static,
-{
+impl<DB, ChainSpec> WithLaunchContext<NodeBuilder<DB, ChainSpec>> {
     /// Returns a reference to the node builder's config.
-    pub const fn config(&self) -> &NodeConfig {
+    pub const fn config(&self) -> &NodeConfig<ChainSpec> {
         self.builder.config()
     }
+}
 
+impl<DB, ChainSpec> WithLaunchContext<NodeBuilder<DB, ChainSpec>>
+where
+    DB: Database + DatabaseMetrics + DatabaseMetadata + Clone + Unpin + 'static,
+    ChainSpec: EthChainSpec + EthereumHardforks,
+{
     /// Configures the types of the node.
     pub fn with_types<T>(self) -> WithLaunchContext<NodeBuilderWithTypes<RethFullAdapter<DB, T>>>
     where
-        T: NodeTypes<ChainSpec = ChainSpec>,
+        T: NodeTypesWithEngine<ChainSpec = ChainSpec>,
     {
         WithLaunchContext { builder: self.builder.with_types(), task_executor: self.task_executor }
     }
@@ -307,10 +344,12 @@ where
     /// Configures the types of the node and the provider type that will be used by the node.
     pub fn with_types_and_provider<T, P>(
         self,
-    ) -> WithLaunchContext<NodeBuilderWithTypes<FullNodeTypesAdapter<T, DB, P>>>
+    ) -> WithLaunchContext<
+        NodeBuilderWithTypes<FullNodeTypesAdapter<NodeTypesWithDBAdapter<T, DB>, P>>,
+    >
     where
-        T: NodeTypes<ChainSpec = ChainSpec>,
-        P: FullProvider<DB, T::ChainSpec>,
+        T: NodeTypesWithEngine<ChainSpec = ChainSpec>,
+        P: FullProvider<NodeTypesWithDBAdapter<T, DB>>,
     {
         WithLaunchContext {
             builder: self.builder.with_types_and_provider(),
@@ -330,7 +369,7 @@ where
     where
         N: Node<RethFullAdapter<DB, N>, ChainSpec = ChainSpec>,
     {
-        self.with_types().with_components(node.components_builder()).with_add_ons::<N::AddOns>()
+        self.with_types().with_components(node.components_builder()).with_add_ons(node.add_ons())
     }
 
     /// Launches a preconfigured [Node]
@@ -352,23 +391,11 @@ where
     >
     where
         N: Node<RethFullAdapter<DB, N>, ChainSpec = ChainSpec>,
-        N::AddOns: NodeAddOns<
+        N::AddOns: RethRpcAddOns<
             NodeAdapter<
                 RethFullAdapter<DB, N>,
                 <N::ComponentsBuilder as NodeComponentsBuilder<RethFullAdapter<DB, N>>>::Components,
             >,
-            EthApi: EthApiBuilderProvider<
-                        NodeAdapter<
-                            RethFullAdapter<DB, N>,
-                            <N::ComponentsBuilder as NodeComponentsBuilder<RethFullAdapter<DB, N>>>::Components,
-                        >
-                    >
-                        + FullEthApiServer<
-                            NetworkTypes: alloy_network::Network<
-                                TransactionResponse = WithOtherFields<reth_rpc_types::Transaction>,
-                            >,
-                        >
-                        + AddDevSigners
         >,
     {
         self.node(node).launch().await
@@ -398,12 +425,15 @@ where
 {
     /// Advances the state of the node builder to the next state where all customizable
     /// [`NodeAddOns`] types are configured.
-    pub fn with_add_ons<AO>(self) -> WithLaunchContext<NodeBuilderWithComponents<T, CB, AO>>
+    pub fn with_add_ons<AO>(
+        self,
+        add_ons: AO,
+    ) -> WithLaunchContext<NodeBuilderWithComponents<T, CB, AO>>
     where
         AO: NodeAddOns<NodeAdapter<T, CB::Components>>,
     {
         WithLaunchContext {
-            builder: self.builder.with_add_ons::<AO>(),
+            builder: self.builder.with_add_ons(add_ons),
             task_executor: self.task_executor,
         }
     }
@@ -413,11 +443,31 @@ impl<T, CB, AO> WithLaunchContext<NodeBuilderWithComponents<T, CB, AO>>
 where
     T: FullNodeTypes,
     CB: NodeComponentsBuilder<T>,
-    AO: NodeAddOns<NodeAdapter<T, CB::Components>, EthApi: FullEthApiServer + AddDevSigners>,
+    AO: RethRpcAddOns<NodeAdapter<T, CB::Components>>,
 {
     /// Returns a reference to the node builder's config.
-    pub const fn config(&self) -> &NodeConfig {
+    pub const fn config(&self) -> &NodeConfig<<T::Types as NodeTypes>::ChainSpec> {
         &self.builder.config
+    }
+
+    /// Apply a function to the builder
+    pub fn apply<F>(self, f: F) -> Self
+    where
+        F: FnOnce(Self) -> Self,
+    {
+        f(self)
+    }
+
+    /// Apply a function to the builder, if the condition is `true`.
+    pub fn apply_if<F>(self, cond: bool, f: F) -> Self
+    where
+        F: FnOnce(Self) -> Self,
+    {
+        if cond {
+            f(self)
+        } else {
+            self
+        }
     }
 
     /// Sets the hook that is run once the node's components are initialized.
@@ -439,6 +489,14 @@ where
             + 'static,
     {
         Self { builder: self.builder.on_node_started(hook), task_executor: self.task_executor }
+    }
+
+    /// Modifies the addons with the given closure.
+    pub fn map_add_ons<F>(self, f: F) -> Self
+    where
+        F: FnOnce(AO) -> AO,
+    {
+        Self { builder: self.builder.map_add_ons(f), task_executor: self.task_executor }
     }
 
     /// Sets the hook that is run once the rpc server is started.
@@ -481,6 +539,24 @@ where
         }
     }
 
+    /// Installs an `ExEx` (Execution Extension) in the node if the condition is true.
+    ///
+    /// # Note
+    ///
+    /// The `ExEx` ID must be unique.
+    pub fn install_exex_if<F, R, E>(self, cond: bool, exex_id: impl Into<String>, exex: F) -> Self
+    where
+        F: FnOnce(ExExContext<NodeAdapter<T, CB::Components>>) -> R + Send + 'static,
+        R: Future<Output = eyre::Result<E>> + Send,
+        E: Future<Output = eyre::Result<()>> + Send,
+    {
+        if cond {
+            self.install_exex(exex_id, exex)
+        } else {
+            self
+        }
+    }
+
     /// Launches the node with the given launcher.
     pub async fn launch_with<L>(self, launcher: L) -> eyre::Result<L::Node>
     where
@@ -508,17 +584,9 @@ where
 impl<T, DB, CB, AO> WithLaunchContext<NodeBuilderWithComponents<RethFullAdapter<DB, T>, CB, AO>>
 where
     DB: Database + DatabaseMetrics + DatabaseMetadata + Clone + Unpin + 'static,
-    T: NodeTypes<ChainSpec = ChainSpec>,
+    T: NodeTypesWithEngine<ChainSpec: EthereumHardforks + EthChainSpec>,
     CB: NodeComponentsBuilder<RethFullAdapter<DB, T>>,
-    AO: NodeAddOns<
-        NodeAdapter<RethFullAdapter<DB, T>, CB::Components>,
-        EthApi: EthApiBuilderProvider<NodeAdapter<RethFullAdapter<DB, T>, CB::Components>>
-                    + FullEthApiServer<
-            NetworkTypes: alloy_network::Network<
-                TransactionResponse = WithOtherFields<reth_rpc_types::Transaction>,
-            >,
-        > + AddDevSigners,
-    >,
+    AO: RethRpcAddOns<NodeAdapter<RethFullAdapter<DB, T>, CB::Components>>,
 {
     /// Launches the node with the [`DefaultNodeLauncher`] that sets up engine API consensus and rpc
     pub async fn launch(
@@ -540,7 +608,7 @@ pub struct BuilderContext<Node: FullNodeTypes> {
     /// The executor of the node.
     pub(crate) executor: TaskExecutor,
     /// Config container
-    pub(crate) config_container: WithConfigs,
+    pub(crate) config_container: WithConfigs<<Node::Types as NodeTypes>::ChainSpec>,
 }
 
 impl<Node: FullNodeTypes> BuilderContext<Node> {
@@ -549,7 +617,7 @@ impl<Node: FullNodeTypes> BuilderContext<Node> {
         head: Head,
         provider: Node::Provider,
         executor: TaskExecutor,
-        config_container: WithConfigs,
+        config_container: WithConfigs<<Node::Types as NodeTypes>::ChainSpec>,
     ) -> Self {
         Self { head, provider, executor, config_container }
     }
@@ -565,7 +633,7 @@ impl<Node: FullNodeTypes> BuilderContext<Node> {
     }
 
     /// Returns the config of the node.
-    pub const fn config(&self) -> &NodeConfig {
+    pub const fn config(&self) -> &NodeConfig<<Node::Types as NodeTypes>::ChainSpec> {
         &self.config_container.config
     }
 
@@ -582,7 +650,7 @@ impl<Node: FullNodeTypes> BuilderContext<Node> {
     }
 
     /// Returns the chain spec of the node.
-    pub fn chain_spec(&self) -> Arc<Node::ChainSpec> {
+    pub fn chain_spec(&self) -> Arc<<Node::Types as NodeTypes>::ChainSpec> {
         self.provider().chain_spec()
     }
 
@@ -606,14 +674,7 @@ impl<Node: FullNodeTypes> BuilderContext<Node> {
         self.config().builder.clone()
     }
 
-    /// Creates the [`NetworkBuilder`] for the node.
-    pub async fn network_builder(&self) -> eyre::Result<NetworkBuilder<(), ()>> {
-        let network_config = self.network_config()?;
-        let builder = NetworkManager::builder(network_config).await?;
-        Ok(builder)
-    }
-
-    /// Convenience function to start the network.
+    /// Convenience function to start the network tasks.
     ///
     /// Spawns the configured network and associated tasks and returns the [`NetworkHandle`]
     /// connected to that network.
@@ -621,8 +682,26 @@ impl<Node: FullNodeTypes> BuilderContext<Node> {
     where
         Pool: TransactionPool + Unpin + 'static,
     {
+        self.start_network_with(builder, pool, Default::default())
+    }
+
+    /// Convenience function to start the network tasks.
+    ///
+    /// Accepts the config for the transaction task.
+    ///
+    /// Spawns the configured network and associated tasks and returns the [`NetworkHandle`]
+    /// connected to that network.
+    pub fn start_network_with<Pool>(
+        &self,
+        builder: NetworkBuilder<(), ()>,
+        pool: Pool,
+        tx_config: TransactionsManagerConfig,
+    ) -> NetworkHandle
+    where
+        Pool: TransactionPool + Unpin + 'static,
+    {
         let (handle, network, txpool, eth) = builder
-            .transactions(pool, Default::default())
+            .transactions(pool, tx_config)
             .request_handler(self.provider().clone())
             .split_with_handle();
 
@@ -654,6 +733,34 @@ impl<Node: FullNodeTypes> BuilderContext<Node> {
         handle
     }
 
+    /// Get the network secret from the given data dir
+    fn network_secret(&self, data_dir: &ChainPath<DataDirPath>) -> eyre::Result<SecretKey> {
+        let network_secret_path =
+            self.config().network.p2p_secret_key.clone().unwrap_or_else(|| data_dir.p2p_secret());
+        let secret_key = get_secret_key(&network_secret_path)?;
+        Ok(secret_key)
+    }
+
+    /// Builds the [`NetworkConfig`].
+    pub fn build_network_config(
+        &self,
+        network_builder: NetworkConfigBuilder,
+    ) -> NetworkConfig<Node::Provider>
+    where
+        Node::Types: NodeTypes<ChainSpec: Hardforks>,
+    {
+        network_builder.build(self.provider.clone())
+    }
+}
+
+impl<Node: FullNodeTypes<Types: NodeTypes<ChainSpec: Hardforks>>> BuilderContext<Node> {
+    /// Creates the [`NetworkBuilder`] for the node.
+    pub async fn network_builder(&self) -> eyre::Result<NetworkBuilder<(), ()>> {
+        let network_config = self.network_config()?;
+        let builder = NetworkManager::builder(network_config).await?;
+        Ok(builder)
+    }
+
     /// Returns the default network config for the node.
     pub fn network_config(&self) -> eyre::Result<NetworkConfig<Node::Provider>> {
         let network_builder = self.network_config_builder();
@@ -677,22 +784,6 @@ impl<Node: FullNodeTypes> BuilderContext<Node> {
             .set_head(self.head);
 
         Ok(builder)
-    }
-
-    /// Get the network secret from the given data dir
-    fn network_secret(&self, data_dir: &ChainPath<DataDirPath>) -> eyre::Result<SecretKey> {
-        let network_secret_path =
-            self.config().network.p2p_secret_key.clone().unwrap_or_else(|| data_dir.p2p_secret());
-        let secret_key = get_secret_key(&network_secret_path)?;
-        Ok(secret_key)
-    }
-
-    /// Builds the [`NetworkConfig`].
-    pub fn build_network_config(
-        &self,
-        network_builder: NetworkConfigBuilder,
-    ) -> NetworkConfig<Node::Provider> {
-        network_builder.build(self.provider.clone())
     }
 }
 

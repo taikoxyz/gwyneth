@@ -1,4 +1,5 @@
 use crate::{DatabaseHashedCursorFactory, DatabaseTrieCursorFactory, PrefixSetLoader};
+use alloy_primitives::{keccak256, Address, BlockNumber, B256, U256};
 use reth_db::tables;
 use reth_db_api::{
     cursor::DbCursorRO,
@@ -6,17 +7,12 @@ use reth_db_api::{
     transaction::DbTx,
 };
 use reth_execution_errors::StateRootError;
-use reth_primitives::{keccak256, Account, Address, BlockNumber, B256, U256};
 use reth_storage_errors::db::DatabaseError;
 use reth_trie::{
-    hashed_cursor::HashedPostStateCursorFactory, prefix_set::TriePrefixSetsMut,
-    trie_cursor::InMemoryTrieCursorFactory, updates::TrieUpdates, HashedPostState, HashedStorage,
-    StateRoot, StateRootProgress,
+    hashed_cursor::HashedPostStateCursorFactory, trie_cursor::InMemoryTrieCursorFactory,
+    updates::TrieUpdates, HashedPostState, HashedStorage, StateRoot, StateRootProgress, TrieInput,
 };
-use std::{
-    collections::{hash_map, HashMap},
-    ops::RangeInclusive,
-};
+use std::{collections::HashMap, ops::RangeInclusive};
 use tracing::debug;
 
 /// Extends [`StateRoot`] with operations specific for working with a database transaction.
@@ -77,9 +73,10 @@ pub trait DatabaseStateRoot<'a, TX>: Sized {
     /// # Example
     ///
     /// ```
+    /// use alloy_primitives::U256;
     /// use reth_db::test_utils::create_test_rw_db;
     /// use reth_db_api::database::Database;
-    /// use reth_primitives::{Account, U256};
+    /// use reth_primitives::Account;
     /// use reth_trie::{updates::TrieUpdates, HashedPostState, StateRoot};
     /// use reth_trie_db::DatabaseStateRoot;
     ///
@@ -111,20 +108,13 @@ pub trait DatabaseStateRoot<'a, TX>: Sized {
     ) -> Result<(B256, TrieUpdates), StateRootError>;
 
     /// Calculates the state root for provided [`HashedPostState`] using cached intermediate nodes.
-    fn overlay_root_from_nodes(
-        tx: &'a TX,
-        intermediate_nodes: TrieUpdates,
-        post_state: HashedPostState,
-        prefix_sets: TriePrefixSetsMut,
-    ) -> Result<B256, StateRootError>;
+    fn overlay_root_from_nodes(tx: &'a TX, input: TrieInput) -> Result<B256, StateRootError>;
 
     /// Calculates the state root and trie updates for provided [`HashedPostState`] using
     /// cached intermediate nodes.
     fn overlay_root_from_nodes_with_updates(
         tx: &'a TX,
-        intermediate_nodes: TrieUpdates,
-        post_state: HashedPostState,
-        prefix_sets: TriePrefixSetsMut,
+        input: TrieInput,
     ) -> Result<(B256, TrieUpdates), StateRootError>;
 }
 
@@ -199,35 +189,28 @@ impl<'a, TX: DbTx> DatabaseStateRoot<'a, TX>
         .root_with_updates()
     }
 
-    fn overlay_root_from_nodes(
-        tx: &'a TX,
-        intermediate_nodes: TrieUpdates,
-        post_state: HashedPostState,
-        prefix_sets: TriePrefixSetsMut,
-    ) -> Result<B256, StateRootError> {
-        let state_sorted = post_state.into_sorted();
-        let nodes_sorted = intermediate_nodes.into_sorted();
+    fn overlay_root_from_nodes(tx: &'a TX, input: TrieInput) -> Result<B256, StateRootError> {
+        let state_sorted = input.state.into_sorted();
+        let nodes_sorted = input.nodes.into_sorted();
         StateRoot::new(
             InMemoryTrieCursorFactory::new(DatabaseTrieCursorFactory::new(tx), &nodes_sorted),
             HashedPostStateCursorFactory::new(DatabaseHashedCursorFactory::new(tx), &state_sorted),
         )
-        .with_prefix_sets(prefix_sets.freeze())
+        .with_prefix_sets(input.prefix_sets.freeze())
         .root()
     }
 
     fn overlay_root_from_nodes_with_updates(
         tx: &'a TX,
-        intermediate_nodes: TrieUpdates,
-        post_state: HashedPostState,
-        prefix_sets: TriePrefixSetsMut,
+        input: TrieInput,
     ) -> Result<(B256, TrieUpdates), StateRootError> {
-        let state_sorted = post_state.into_sorted();
-        let nodes_sorted = intermediate_nodes.into_sorted();
+        let state_sorted = input.state.into_sorted();
+        let nodes_sorted = input.nodes.into_sorted();
         StateRoot::new(
             InMemoryTrieCursorFactory::new(DatabaseTrieCursorFactory::new(tx), &nodes_sorted),
             HashedPostStateCursorFactory::new(DatabaseHashedCursorFactory::new(tx), &state_sorted),
         )
-        .with_prefix_sets(prefix_sets.freeze())
+        .with_prefix_sets(input.prefix_sets.freeze())
         .root_with_updates()
     }
 }
@@ -235,13 +218,11 @@ impl<'a, TX: DbTx> DatabaseStateRoot<'a, TX>
 impl<TX: DbTx> DatabaseHashedPostState<TX> for HashedPostState {
     fn from_reverts(tx: &TX, from: BlockNumber) -> Result<Self, DatabaseError> {
         // Iterate over account changesets and record value before first occurring account change.
-        let mut accounts = HashMap::<Address, Option<Account>>::default();
+        let mut accounts = HashMap::new();
         let mut account_changesets_cursor = tx.cursor_read::<tables::AccountChangeSets>()?;
         for entry in account_changesets_cursor.walk_range(from..)? {
             let (_, AccountBeforeTx { address, info }) = entry?;
-            if let hash_map::Entry::Vacant(entry) = accounts.entry(address) {
-                entry.insert(info);
-            }
+            accounts.entry(address).or_insert(info);
         }
 
         // Iterate over storage changesets and record value before first occurring storage change.
@@ -252,27 +233,27 @@ impl<TX: DbTx> DatabaseHashedPostState<TX> for HashedPostState {
         {
             let (BlockNumberAddress((_, address)), storage) = entry?;
             let account_storage = storages.entry(address).or_default();
-            if let hash_map::Entry::Vacant(entry) = account_storage.entry(storage.key) {
-                entry.insert(storage.value);
-            }
+            account_storage.entry(storage.key).or_insert(storage.value);
         }
 
-        let hashed_accounts = HashMap::from_iter(
-            accounts.into_iter().map(|(address, info)| (keccak256(address), info)),
-        );
+        let hashed_accounts =
+            accounts.into_iter().map(|(address, info)| (keccak256(address), info)).collect();
 
-        let hashed_storages = HashMap::from_iter(storages.into_iter().map(|(address, storage)| {
-            (
-                keccak256(address),
-                HashedStorage::from_iter(
-                    // The `wiped` flag indicates only whether previous storage entries
-                    // should be looked up in db or not. For reverts it's a noop since all
-                    // wiped changes had been written as storage reverts.
-                    false,
-                    storage.into_iter().map(|(slot, value)| (keccak256(slot), value)),
-                ),
-            )
-        }));
+        let hashed_storages = storages
+            .into_iter()
+            .map(|(address, storage)| {
+                (
+                    keccak256(address),
+                    HashedStorage::from_iter(
+                        // The `wiped` flag indicates only whether previous storage entries
+                        // should be looked up in db or not. For reverts it's a noop since all
+                        // wiped changes had been written as storage reverts.
+                        false,
+                        storage.into_iter().map(|(slot, value)| (keccak256(slot), value)),
+                    ),
+                )
+            })
+            .collect();
 
         Ok(Self { accounts: hashed_accounts, storages: hashed_storages })
     }
@@ -281,13 +262,11 @@ impl<TX: DbTx> DatabaseHashedPostState<TX> for HashedPostState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloy_primitives::{hex, map::HashMap, Address, U256};
     use reth_db::test_utils::create_test_rw_db;
     use reth_db_api::database::Database;
-    use reth_primitives::{
-        constants::ETHEREUM_CHAIN_ID, hex, revm_primitives::AccountInfo, Address, U256,
-    };
-    use revm::{db::BundleState, primitives::ChainAddress};
-    use std::collections::HashMap;
+    use revm::{db::BundleState, primitives::{AccountInfo, ChainAddress}};
+    use reth_primitives::constants::ETHEREUM_CHAIN_ID;
 
     #[test]
     fn from_bundle_state_with_rayon() {
@@ -302,8 +281,8 @@ mod tests {
         let bundle_state = BundleState::builder(2..=2)
             .state_present_account_info(address1, account1)
             .state_present_account_info(address2, account2)
-            .state_storage(address1, HashMap::from([(slot1, (U256::ZERO, U256::from(10)))]))
-            .state_storage(address2, HashMap::from([(slot2, (U256::ZERO, U256::from(20)))]))
+            .state_storage(address1, HashMap::from_iter([(slot1, (U256::ZERO, U256::from(10)))]))
+            .state_storage(address2, HashMap::from_iter([(slot2, (U256::ZERO, U256::from(20)))]))
             .build();
         assert_eq!(bundle_state.reverts.len(), 1);
 

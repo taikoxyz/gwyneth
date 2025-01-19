@@ -8,19 +8,22 @@
 #![cfg_attr(not(test), warn(unused_crate_dependencies))]
 #![cfg_attr(docsrs, feature(doc_cfg, doc_auto_cfg))]
 
-use reth_chainspec::{ChainSpec, EthereumHardfork, EthereumHardforks};
+use alloy_consensus::{Header, EMPTY_OMMER_ROOT_HASH};
+use alloy_primitives::U256;
+use reth_chainspec::{EthChainSpec, EthereumHardfork, EthereumHardforks};
 use reth_consensus::{Consensus, ConsensusError, PostExecutionInput};
 use reth_consensus_common::validation::{
     validate_4844_header_standalone, validate_against_parent_4844,
     validate_against_parent_eip1559_base_fee, validate_against_parent_hash_number,
-    validate_against_parent_timestamp, validate_block_pre_execution, validate_header_base_fee,
-    validate_header_extradata, validate_header_gas,
+    validate_against_parent_timestamp, validate_block_pre_execution, validate_body_against_header,
+    validate_header_base_fee, validate_header_extradata, validate_header_gas,
 };
-use reth_primitives::{
-    constants::MINIMUM_GAS_LIMIT, BlockWithSenders, Header, SealedBlock, SealedHeader,
-    EMPTY_OMMER_ROOT_HASH, U256,
-};
-use std::{sync::Arc, time::SystemTime};
+use reth_primitives::{BlockBody, BlockWithSenders, SealedBlock, SealedHeader};
+use reth_primitives_traits::constants::MINIMUM_GAS_LIMIT;
+use std::{fmt::Debug, sync::Arc, time::SystemTime};
+
+/// The bound divisor of the gas limit, used in update calculations.
+pub const GAS_LIMIT_BOUND_DIVISOR: u64 = 1024;
 
 mod validation;
 pub use validation::validate_block_post_execution;
@@ -28,13 +31,13 @@ pub use validation::validate_block_post_execution;
 /// Ethereum beacon consensus
 ///
 /// This consensus engine does basic checks as outlined in the execution specs.
-#[derive(Debug)]
-pub struct EthBeaconConsensus {
+#[derive(Debug, Clone)]
+pub struct EthBeaconConsensus<ChainSpec> {
     /// Configuration
     chain_spec: Arc<ChainSpec>,
 }
 
-impl EthBeaconConsensus {
+impl<ChainSpec: EthChainSpec + EthereumHardforks> EthBeaconConsensus<ChainSpec> {
     /// Create a new instance of [`EthBeaconConsensus`]
     pub const fn new(chain_spec: Arc<ChainSpec>) -> Self {
         Self { chain_spec }
@@ -43,7 +46,7 @@ impl EthBeaconConsensus {
     /// Checks the gas limit for consistency between parent and self headers.
     ///
     /// The maximum allowable difference between self and parent gas limits is determined by the
-    /// parent's gas limit divided by the elasticity multiplier (1024).
+    /// parent's gas limit divided by the [`GAS_LIMIT_BOUND_DIVISOR`].
     fn validate_against_parent_gas_limit(
         &self,
         header: &SealedHeader,
@@ -61,8 +64,9 @@ impl EthBeaconConsensus {
             };
 
         // Check for an increase in gas limit beyond the allowed threshold.
+
         if header.gas_limit > parent_gas_limit {
-            if header.gas_limit - parent_gas_limit >= parent_gas_limit / 1024 {
+            if header.gas_limit - parent_gas_limit >= parent_gas_limit / GAS_LIMIT_BOUND_DIVISOR {
                 return Err(ConsensusError::GasLimitInvalidIncrease {
                     parent_gas_limit,
                     child_gas_limit: header.gas_limit,
@@ -70,7 +74,8 @@ impl EthBeaconConsensus {
             }
         }
         // Check for a decrease in gas limit beyond the allowed threshold.
-        else if parent_gas_limit - header.gas_limit >= parent_gas_limit / 1024 {
+        else if parent_gas_limit - header.gas_limit >= parent_gas_limit / GAS_LIMIT_BOUND_DIVISOR
+        {
             return Err(ConsensusError::GasLimitInvalidDecrease {
                 parent_gas_limit,
                 child_gas_limit: header.gas_limit,
@@ -85,7 +90,9 @@ impl EthBeaconConsensus {
     }
 }
 
-impl Consensus for EthBeaconConsensus {
+impl<ChainSpec: Send + Sync + EthChainSpec + EthereumHardforks + Debug> Consensus
+    for EthBeaconConsensus<ChainSpec>
+{
     fn validate_header(&self, header: &SealedHeader) -> Result<(), ConsensusError> {
         validate_header_gas(header)?;
         validate_header_base_fee(header, &self.chain_spec)?;
@@ -113,11 +120,11 @@ impl Consensus for EthBeaconConsensus {
         }
 
         if self.chain_spec.is_prague_active_at_timestamp(header.timestamp) {
-            if header.requests_root.is_none() {
-                return Err(ConsensusError::RequestsRootMissing)
+            if header.requests_hash.is_none() {
+                return Err(ConsensusError::RequestsHashMissing)
             }
-        } else if header.requests_root.is_some() {
-            return Err(ConsensusError::RequestsRootUnexpected)
+        } else if header.requests_hash.is_some() {
+            return Err(ConsensusError::RequestsHashUnexpected)
         }
 
         Ok(())
@@ -161,7 +168,7 @@ impl Consensus for EthBeaconConsensus {
                 return Err(ConsensusError::TheMergeDifficultyIsNotZero)
             }
 
-            if header.nonce != 0 {
+            if !header.nonce.is_zero() {
                 return Err(ConsensusError::TheMergeNonceIsNotZero)
             }
 
@@ -204,6 +211,14 @@ impl Consensus for EthBeaconConsensus {
         Ok(())
     }
 
+    fn validate_body_against_header(
+        &self,
+        body: &BlockBody,
+        header: &SealedHeader,
+    ) -> Result<(), ConsensusError> {
+        validate_body_against_header(body, header)
+    }
+
     fn validate_block_pre_execution(&self, block: &SealedBlock) -> Result<(), ConsensusError> {
         validate_block_pre_execution(block, &self.chain_spec)
     }
@@ -220,18 +235,19 @@ impl Consensus for EthBeaconConsensus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use reth_chainspec::ChainSpecBuilder;
-    use reth_primitives::{proofs, B256};
+    use alloy_primitives::B256;
+    use reth_chainspec::{ChainSpec, ChainSpecBuilder};
+    use reth_primitives::proofs;
 
     fn header_with_gas_limit(gas_limit: u64) -> SealedHeader {
         let header = Header { gas_limit, ..Default::default() };
-        header.seal(B256::ZERO)
+        SealedHeader::new(header, B256::ZERO)
     }
 
     #[test]
     fn test_valid_gas_limit_increase() {
-        let parent = header_with_gas_limit(1024 * 10);
-        let child = header_with_gas_limit(parent.gas_limit + 5);
+        let parent = header_with_gas_limit(GAS_LIMIT_BOUND_DIVISOR * 10);
+        let child = header_with_gas_limit((parent.gas_limit + 5) as u64);
 
         assert_eq!(
             EthBeaconConsensus::new(Arc::new(ChainSpec::default()))
@@ -248,14 +264,16 @@ mod tests {
         assert_eq!(
             EthBeaconConsensus::new(Arc::new(ChainSpec::default()))
                 .validate_against_parent_gas_limit(&child, &parent),
-            Err(ConsensusError::GasLimitInvalidMinimum { child_gas_limit: child.gas_limit })
+            Err(ConsensusError::GasLimitInvalidMinimum { child_gas_limit: child.gas_limit as u64 })
         );
     }
 
     #[test]
     fn test_invalid_gas_limit_increase_exceeding_limit() {
-        let parent = header_with_gas_limit(1024 * 10);
-        let child = header_with_gas_limit(parent.gas_limit + parent.gas_limit / 1024 + 1);
+        let parent = header_with_gas_limit(GAS_LIMIT_BOUND_DIVISOR * 10);
+        let child = header_with_gas_limit(
+            parent.gas_limit + parent.gas_limit / GAS_LIMIT_BOUND_DIVISOR + 1,
+        );
 
         assert_eq!(
             EthBeaconConsensus::new(Arc::new(ChainSpec::default()))
@@ -269,7 +287,7 @@ mod tests {
 
     #[test]
     fn test_valid_gas_limit_decrease_within_limit() {
-        let parent = header_with_gas_limit(1024 * 10);
+        let parent = header_with_gas_limit(GAS_LIMIT_BOUND_DIVISOR * 10);
         let child = header_with_gas_limit(parent.gas_limit - 5);
 
         assert_eq!(
@@ -281,8 +299,10 @@ mod tests {
 
     #[test]
     fn test_invalid_gas_limit_decrease_exceeding_limit() {
-        let parent = header_with_gas_limit(1024 * 10);
-        let child = header_with_gas_limit(parent.gas_limit - parent.gas_limit / 1024 - 1);
+        let parent = header_with_gas_limit(GAS_LIMIT_BOUND_DIVISOR * 10);
+        let child = header_with_gas_limit(
+            parent.gas_limit - parent.gas_limit / GAS_LIMIT_BOUND_DIVISOR - 1,
+        );
 
         assert_eq!(
             EthBeaconConsensus::new(Arc::new(ChainSpec::default()))
@@ -301,12 +321,14 @@ mod tests {
         let chain_spec = Arc::new(ChainSpecBuilder::mainnet().shanghai_activated().build());
 
         let header = Header {
-            base_fee_per_gas: Some(1337u64),
+            base_fee_per_gas: Some(1337),
             withdrawals_root: Some(proofs::calculate_withdrawals_root(&[])),
             ..Default::default()
-        }
-        .seal_slow();
+        };
 
-        assert_eq!(EthBeaconConsensus::new(chain_spec).validate_header(&header), Ok(()));
+        assert_eq!(
+            EthBeaconConsensus::new(chain_spec).validate_header(&SealedHeader::seal(header,)),
+            Ok(())
+        );
     }
 }

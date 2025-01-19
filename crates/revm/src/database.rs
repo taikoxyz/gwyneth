@@ -1,7 +1,7 @@
 use crate::primitives::alloy_primitives::{BlockNumber, StorageKey, StorageValue};
+use alloy_primitives::{Address, B256, U256};
 use core::ops::{Deref, DerefMut};
-use reth_primitives::{constants::ETHEREUM_CHAIN_ID, Account, Address, B256, U256};
-use reth_storage_api::StateProvider;
+use reth_primitives::Account;
 use reth_storage_errors::provider::{ProviderError, ProviderResult};
 use revm::{
     db::{CacheDB, DatabaseRef},
@@ -9,6 +9,7 @@ use revm::{
     Database, SyncDatabase, SyncDatabaseRef,
 };
 use std::collections::HashMap;
+use alloy_consensus::constants::KECCAK_EMPTY;
 
 #[derive(Debug, Clone)]
 pub struct SyncStateProviderDatabase<DB>(pub HashMap<u64, StateProviderDatabase<DB>>);
@@ -18,7 +19,7 @@ impl<DB> SyncStateProviderDatabase<DB> {
     pub fn new(chain_id: Option<u64>, db: StateProviderDatabase<DB>) -> Self {
         // assert!(chain_id.is_some());
         let mut map = HashMap::new();
-        map.insert(chain_id.unwrap_or(ETHEREUM_CHAIN_ID), db);
+        map.insert(chain_id.unwrap(), db);
         Self(map)
     }
 
@@ -39,13 +40,13 @@ impl<DB> SyncStateProviderDatabase<DB> {
         self.0.get_mut(&chain_id)
     }
 
-    pub fn get_default_db(&self) -> Option<&StateProviderDatabase<DB>> {
-        self.0.get(&ETHEREUM_CHAIN_ID)
-    }
+    // pub fn get_default_db(&self) -> Option<&StateProviderDatabase<DB>> {
+    //     self.0.get(&ETHEREUM_CHAIN_ID)
+    // }
 
-    pub fn get_default_db_mut(&mut self) -> Option<&mut StateProviderDatabase<DB>> {
-        self.0.get_mut(&ETHEREUM_CHAIN_ID)
-    }
+    // pub fn get_default_db_mut(&mut self) -> Option<&mut StateProviderDatabase<DB>> {
+    //     self.0.get_mut(&ETHEREUM_CHAIN_ID)
+    // }
 }
 
 impl<DB> Deref for SyncStateProviderDatabase<DB> {
@@ -85,6 +86,29 @@ pub trait SyncEvmStateProvider: Send + Sync {
         account: ChainAddress,
         storage_key: StorageKey,
     ) -> ProviderResult<Option<StorageValue>>;
+
+    /// Get account code by its address.
+    ///
+    /// Returns `None` if the account doesn't exist or account is not a contract
+    fn account_code(&self, addr: ChainAddress) -> ProviderResult<Option<reth_primitives::Bytecode>> {
+        // Get basic account information
+        // Returns None if acc doesn't exist
+        let acc = match self.basic_account(addr)? {
+            Some(acc) => acc,
+            None => return Ok(None),
+        };
+
+        if let Some(code_hash) = acc.bytecode_hash {
+            if code_hash == KECCAK_EMPTY {
+                return Ok(None)
+            }
+            // Get the code from the code hash
+            return self.bytecode_by_hash(addr.0, code_hash)
+        }
+
+        // Return `None` if no code hash is set
+        Ok(None)
+    }
 }
 
 impl<DB: EvmStateProvider> SyncEvmStateProvider for SyncStateProviderDatabase<DB> {
@@ -181,26 +205,26 @@ impl<DB: EvmStateProvider> SyncDatabaseRef for SyncStateProviderDatabase<DB> {
     }
 }
 
-/// A helper trait responsible for providing that necessary state for the EVM execution.
+/// A helper trait responsible for providing state necessary for EVM execution.
 ///
-/// This servers as the data layer for [Database].
+/// This serves as the data layer for [`Database`].
 pub trait EvmStateProvider: Send + Sync {
     /// Get basic account information.
     ///
-    /// Returns `None` if the account doesn't exist.
+    /// Returns [`None`] if the account doesn't exist.
     fn basic_account(&self, address: Address) -> ProviderResult<Option<Account>>;
 
-    /// Get the hash of the block with the given number. Returns `None` if no block with this number
-    /// exists.
+    /// Get the hash of the block with the given number. Returns [`None`] if no block with this
+    /// number exists.
     fn block_hash(&self, number: BlockNumber) -> ProviderResult<Option<B256>>;
 
-    /// Get account code by its hash
+    /// Get account code by hash.
     fn bytecode_by_hash(
         &self,
         code_hash: B256,
     ) -> ProviderResult<Option<reth_primitives::Bytecode>>;
 
-    /// Get storage of given account.
+    /// Get storage of the given account.
     fn storage(
         &self,
         account: Address,
@@ -252,6 +276,12 @@ impl<DB> StateProviderDatabase<DB> {
     }
 }
 
+impl<DB> AsRef<DB> for StateProviderDatabase<DB> {
+    fn as_ref(&self) -> &DB {
+        self
+    }
+}
+
 impl<DB> Deref for StateProviderDatabase<DB> {
     type Target = DB;
 
@@ -274,22 +304,21 @@ impl<DB: EvmStateProvider> Database for StateProviderDatabase<DB> {
     /// Returns `Ok` with `Some(AccountInfo)` if the account exists,
     /// `None` if it doesn't, or an error if encountered.
     fn basic(&mut self, address: Address) -> Result<Option<AccountInfo>, Self::Error> {
-        //println!("Brecht: read account");
-        DatabaseRef::basic_ref(self, address)
+        self.basic_ref(address)
     }
 
     /// Retrieves the bytecode associated with a given code hash.
     ///
     /// Returns `Ok` with the bytecode if found, or the default bytecode otherwise.
     fn code_by_hash(&mut self, code_hash: B256) -> Result<Bytecode, Self::Error> {
-        DatabaseRef::code_by_hash_ref(self, code_hash)
+        self.code_by_hash_ref(code_hash)
     }
 
     /// Retrieves the storage value at a specific index for a given address.
     ///
     /// Returns `Ok` with the storage value, or the default value if not found.
     fn storage(&mut self, address: Address, index: U256) -> Result<U256, Self::Error> {
-        DatabaseRef::storage_ref(self, address, index)
+        self.storage_ref(address, index)
     }
 
     /// Retrieves the block hash for a given block number.
@@ -297,7 +326,7 @@ impl<DB: EvmStateProvider> Database for StateProviderDatabase<DB> {
     /// Returns `Ok` with the block hash if found, or the default hash otherwise.
     /// Note: It safely casts the `number` to `u64`.
     fn block_hash(&mut self, number: u64) -> Result<B256, Self::Error> {
-        DatabaseRef::block_hash_ref(self, number)
+        self.block_hash_ref(number)
     }
 }
 

@@ -1,5 +1,6 @@
 use super::request::BodiesRequestFuture;
 use crate::metrics::BodyDownloaderMetrics;
+use alloy_primitives::BlockNumber;
 use futures::{stream::FuturesUnordered, Stream};
 use futures_util::StreamExt;
 use reth_consensus::Consensus;
@@ -7,7 +8,8 @@ use reth_network_p2p::{
     bodies::{client::BodiesClient, response::BlockResponse},
     error::DownloadResult,
 };
-use reth_primitives::{BlockNumber, SealedHeader};
+use reth_primitives::SealedHeader;
+use reth_primitives_traits::InMemorySize;
 use std::{
     pin::Pin,
     sync::Arc,
@@ -56,7 +58,7 @@ where
     pub(crate) fn push_new_request(
         &mut self,
         client: Arc<B>,
-        consensus: Arc<dyn Consensus>,
+        consensus: Arc<dyn Consensus<alloy_consensus::Header, B::Body>>,
         request: Vec<SealedHeader>,
     ) {
         // Set last max requested block number
@@ -76,9 +78,9 @@ where
 
 impl<B> Stream for BodiesRequestQueue<B>
 where
-    B: BodiesClient + 'static,
+    B: BodiesClient<Body: InMemorySize> + 'static,
 {
-    type Item = DownloadResult<Vec<BlockResponse>>;
+    type Item = DownloadResult<Vec<BlockResponse<B::Body>>>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         self.get_mut().inner.poll_next_unpin(cx)

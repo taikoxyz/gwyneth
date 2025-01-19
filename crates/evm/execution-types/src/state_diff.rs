@@ -1,8 +1,4 @@
 use std::collections::HashMap;
-
-use reth_primitives::{
-    constants::{eip4844::MAX_DATA_GAS_PER_BLOCK, BEACON_NONCE}, eip4844::calculate_excess_blob_gas, proofs::{self, calculate_requests_root}, Block, BlockNumber, ChainId, EthereumHardforks, Header, Receipt, Receipts, Requests, StateDiff, StateDiffAccount, StateDiffStorageSlot, TransactionSigned, B256, EMPTY_OMMER_ROOT_HASH, U256
-};
 //use reth_provider::{StateProvider, StateProviderFactory};
 //use reth_revm::database::{StateProviderDatabase, SyncStateProviderDatabase};
 //use reth_transaction_pool::{BestTransactionsAttributes, TransactionPool};
@@ -11,6 +7,8 @@ use revm::{
     primitives::{AccountInfo, Bytecode, EVMError, EnvWithHandlerCfg, ResultAndState},
     DatabaseCommit, SyncDatabase,
 };
+use alloy_primitives::B256;
+use reth_primitives::{Receipt, StateDiff, StateDiffAccount, StateDiffStorageSlot};
 
 use revm::primitives::ChainAddress;
 use revm::db::AccountStatus;
@@ -61,7 +59,7 @@ pub fn state_diff_to_block_execution_output(chain_id: u64, state_diff: &StateDif
     let mut block_execution_output = BlockExecutionOutput::<Receipt> {
         state: state_diff.bundle.clone(),
         receipts: state_diff.receipts.clone(),
-        requests: Vec::new(),
+        requests: Vec::new().into(),
         gas_used: state_diff.gas_used,
     };
 

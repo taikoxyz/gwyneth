@@ -1,41 +1,41 @@
 //! Error types emitted by types or implementations of this crate.
 
+use alloy_primitives::B256;
 use reth_errors::{ProviderError, RethError};
-use reth_primitives::{revm_primitives::EVMError, B256};
-use reth_transaction_pool::BlobStoreError;
+use revm_primitives::EVMError;
 use tokio::sync::oneshot;
 
 /// Possible error variants during payload building.
 #[derive(Debug, thiserror::Error)]
 pub enum PayloadBuilderError {
+    /// Thrown when the parent header cannot be found
+    #[error("missing parent header: {0}")]
+    MissingParentHeader(B256),
     /// Thrown when the parent block is missing.
     #[error("missing parent block {0}")]
     MissingParentBlock(B256),
     /// An oneshot channels has been closed.
     #[error("sender has been dropped")]
     ChannelClosed,
-    /// Error occurring in the blob store.
-    #[error(transparent)]
-    BlobStore(#[from] BlobStoreError),
+    /// If there's no payload to resolve.
+    #[error("missing payload")]
+    MissingPayload,
     /// Other internal error
     #[error(transparent)]
     Internal(#[from] RethError),
     /// Unrecoverable error during evm execution.
     #[error("evm execution error: {0}")]
     EvmExecutionError(EVMError<ProviderError>),
-    /// Thrown if the payload requests withdrawals before Shanghai activation.
-    #[error("withdrawals set before Shanghai activation")]
-    WithdrawalsBeforeShanghai,
     /// Any other payload building errors.
     #[error(transparent)]
-    Other(Box<dyn std::error::Error + Send + Sync>),
+    Other(Box<dyn core::error::Error + Send + Sync>),
 }
 
 impl PayloadBuilderError {
     /// Create a new error from a boxed error.
     pub fn other<E>(error: E) -> Self
     where
-        E: std::error::Error + Send + Sync + 'static,
+        E: core::error::Error + Send + Sync + 'static,
     {
         Self::Other(Box::new(error))
     }
@@ -77,7 +77,7 @@ pub enum EngineObjectValidationError {
     UnsupportedFork,
     /// Another type of error that is not covered by the above variants.
     #[error("Invalid params: {0}")]
-    InvalidParams(#[from] Box<dyn std::error::Error + Send + Sync>),
+    InvalidParams(#[from] Box<dyn core::error::Error + Send + Sync>),
 }
 
 /// Thrown when validating an execution payload OR payload attributes fails due to:
@@ -110,7 +110,7 @@ impl EngineObjectValidationError {
     /// Creates an instance of the `InvalidParams` variant with the given error.
     pub fn invalid_params<E>(error: E) -> Self
     where
-        E: std::error::Error + Send + Sync + 'static,
+        E: core::error::Error + Send + Sync + 'static,
     {
         Self::InvalidParams(Box::new(error))
     }

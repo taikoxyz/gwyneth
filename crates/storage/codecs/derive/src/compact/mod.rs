@@ -43,13 +43,13 @@ pub enum FieldTypes {
 pub fn derive(input: TokenStream, is_zstd: bool) -> TokenStream {
     let mut output = quote! {};
 
-    let DeriveInput { ident, data, generics, .. } = parse_macro_input!(input);
+    let DeriveInput { ident, data, generics, attrs, .. } = parse_macro_input!(input);
 
     let has_lifetime = has_lifetime(&generics);
 
     let fields = get_fields(&data);
     output.extend(generate_flag_struct(&ident, has_lifetime, &fields, is_zstd));
-    output.extend(generate_from_to(&ident, has_lifetime, &fields, is_zstd));
+    output.extend(generate_from_to(&ident, &attrs, has_lifetime, &fields, is_zstd));
     output.into()
 }
 
@@ -141,7 +141,7 @@ fn load_field_from_segments(
         }
 
         if is_enum {
-            fields.push(FieldTypes::EnumUnnamedField((ftype.to_string(), use_alt_impl)));
+            fields.push(FieldTypes::EnumUnnamedField((ftype, use_alt_impl)));
         } else {
             let should_compact = is_flag_type(&ftype) ||
                 field.attrs.iter().any(|attr| {
@@ -162,8 +162,8 @@ fn load_field_from_segments(
 /// Vec/Option we try to find out if it's a Vec/Option of a fixed size data type, e.g. `Vec<B256>`.
 ///
 /// If so, we use another impl to code/decode its data.
-fn should_use_alt_impl(ftype: &String, segment: &syn::PathSegment) -> bool {
-    if *ftype == "Vec" || *ftype == "Option" {
+fn should_use_alt_impl(ftype: &str, segment: &syn::PathSegment) -> bool {
+    if ftype == "Vec" || ftype == "Option" {
         if let syn::PathArguments::AngleBracketed(ref args) = segment.arguments {
             if let Some(syn::GenericArgument::Type(syn::Type::Path(arg_path))) = args.args.last() {
                 if let (Some(path), 1) =
@@ -233,10 +233,10 @@ mod tests {
 
         // Generate code that will impl the `Compact` trait.
         let mut output = quote! {};
-        let DeriveInput { ident, data, .. } = parse2(f_struct).unwrap();
+        let DeriveInput { ident, data, attrs, .. } = parse2(f_struct).unwrap();
         let fields = get_fields(&data);
         output.extend(generate_flag_struct(&ident, false, &fields, false));
-        output.extend(generate_from_to(&ident, false, &fields, false));
+        output.extend(generate_from_to(&ident, &attrs, false, &fields, false));
 
         // Expected output in a TokenStream format. Commas matter!
         let should_output = quote! {
@@ -244,6 +244,10 @@ mod tests {
                 #[doc = "Used bytes by [`TestStructFlags`]"]
                 pub const fn bitflag_encoded_bytes() -> usize {
                     2u8 as usize
+                }
+                #[doc = "Unused bits for new fields by [`TestStructFlags`]"]
+                pub const fn bitflag_unused_bits() -> usize {
+                    1u8 as usize
                 }
             }
 
@@ -281,16 +285,18 @@ mod tests {
             #[allow(dead_code)]
             #[test_fuzz::test_fuzz]
             fn fuzz_test_test_struct(obj: TestStruct) {
+                use reth_codecs::Compact;
                 let mut buf = vec![];
                 let len = obj.clone().to_compact(&mut buf);
                 let (same_obj, buf) = TestStruct::from_compact(buf.as_ref(), len);
                 assert_eq!(obj, same_obj);
             }
             #[test]
+            #[allow(missing_docs)]
             pub fn fuzz_test_struct() {
                 fuzz_test_test_struct(TestStruct::default())
             }
-            impl Compact for TestStruct {
+            impl reth_codecs::Compact for TestStruct {
                 fn to_compact<B>(&self, buf: &mut B) -> usize where B: bytes::BufMut + AsMut<[u8]> {
                     let mut flags = TestStructFlags::default();
                     let mut total_length = 0;

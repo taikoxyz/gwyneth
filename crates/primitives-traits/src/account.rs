@@ -5,11 +5,26 @@ use byteorder::{BigEndian, ReadBytesExt};
 use bytes::Buf;
 use derive_more::Deref;
 use reth_codecs::{add_arbitrary_tests, Compact};
-use revm_primitives::{AccountInfo, Bytecode as RevmBytecode, JumpTable};
-use serde::{Deserialize, Serialize};
+use revm_primitives::{AccountInfo, Bytecode as RevmBytecode, BytecodeDecodeError, JumpTable};
+
+/// Identifier for [`LegacyRaw`](RevmBytecode::LegacyRaw).
+const LEGACY_RAW_BYTECODE_ID: u8 = 0;
+
+/// Identifier for removed bytecode variant.
+const REMOVED_BYTECODE_ID: u8 = 1;
+
+/// Identifier for [`LegacyAnalyzed`](RevmBytecode::LegacyAnalyzed).
+const LEGACY_ANALYZED_BYTECODE_ID: u8 = 2;
+
+/// Identifier for [`Eof`](RevmBytecode::Eof).
+const EOF_BYTECODE_ID: u8 = 3;
+
+/// Identifier for [`Eip7702`](RevmBytecode::Eip7702).
+const EIP7702_BYTECODE_ID: u8 = 4;
 
 /// An Ethereum account.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize, Compact)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Compact)]
 #[cfg_attr(any(test, feature = "arbitrary"), derive(arbitrary::Arbitrary))]
 #[add_arbitrary_tests(compact)]
 pub struct Account {
@@ -45,7 +60,8 @@ impl Account {
 /// Bytecode for an account.
 ///
 /// A wrapper around [`revm::primitives::Bytecode`][RevmBytecode] with encoding/decoding support.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Deref)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deref)]
 pub struct Bytecode(pub RevmBytecode);
 
 impl Bytecode {
@@ -58,6 +74,14 @@ impl Bytecode {
     /// Panics if bytecode is EOF and has incorrect format.
     pub fn new_raw(bytes: Bytes) -> Self {
         Self(RevmBytecode::new_raw(bytes))
+    }
+
+    /// Creates a new raw [`revm_primitives::Bytecode`].
+    ///
+    /// Returns an error on incorrect Bytecode format.
+    #[inline]
+    pub fn new_raw_checked(bytecode: Bytes) -> Result<Self, BytecodeDecodeError> {
+        RevmBytecode::new_raw_checked(bytecode).map(Self)
     }
 }
 
@@ -76,23 +100,23 @@ impl Compact for Bytecode {
         buf.put_slice(bytecode.as_ref());
         let len = match &self.0 {
             RevmBytecode::LegacyRaw(_) => {
-                buf.put_u8(0);
+                buf.put_u8(LEGACY_RAW_BYTECODE_ID);
                 1
             }
-            // `1` has been removed.
+            // [`REMOVED_BYTECODE_ID`] has been removed.
             RevmBytecode::LegacyAnalyzed(analyzed) => {
-                buf.put_u8(2);
+                buf.put_u8(LEGACY_ANALYZED_BYTECODE_ID);
                 buf.put_u64(analyzed.original_len() as u64);
                 let map = analyzed.jump_table().as_slice();
                 buf.put_slice(map);
                 1 + 8 + map.len()
             }
             RevmBytecode::Eof(_) => {
-                buf.put_u8(3);
+                buf.put_u8(EOF_BYTECODE_ID);
                 1
             }
             RevmBytecode::Eip7702(_) => {
-                buf.put_u8(4);
+                buf.put_u8(EIP7702_BYTECODE_ID);
                 1
             }
         };
@@ -108,16 +132,18 @@ impl Compact for Bytecode {
         let bytes = Bytes::from(buf.copy_to_bytes(len as usize));
         let variant = buf.read_u8().expect("could not read bytecode variant");
         let decoded = match variant {
-            0 => Self(RevmBytecode::new_raw(bytes)),
-            1 => unreachable!("Junk data in database: checked Bytecode variant was removed"),
-            2 => Self(unsafe {
+            LEGACY_RAW_BYTECODE_ID => Self(RevmBytecode::new_raw(bytes)),
+            REMOVED_BYTECODE_ID => {
+                unreachable!("Junk data in database: checked Bytecode variant was removed")
+            }
+            LEGACY_ANALYZED_BYTECODE_ID => Self(unsafe {
                 RevmBytecode::new_analyzed(
                     bytes,
                     buf.read_u64::<BigEndian>().unwrap() as usize,
                     JumpTable::from_slice(buf),
                 )
             }),
-            3 | 4 => {
+            EOF_BYTECODE_ID | EIP7702_BYTECODE_ID => {
                 // EOF and EIP-7702 bytecode objects will be decoded from the raw bytecode
                 Self(RevmBytecode::new_raw(bytes))
             }
@@ -230,5 +256,51 @@ mod tests {
         let (decoded, remainder) = Bytecode::from_compact(&buf, len);
         assert_eq!(decoded, bytecode);
         assert!(remainder.is_empty());
+    }
+
+    #[test]
+    fn test_account_has_bytecode() {
+        // Account with no bytecode (None)
+        let acc_no_bytecode = Account { nonce: 1, balance: U256::from(1000), bytecode_hash: None };
+        assert!(!acc_no_bytecode.has_bytecode(), "Account should not have bytecode");
+
+        // Account with bytecode hash set to KECCAK_EMPTY (should have bytecode)
+        let acc_empty_bytecode =
+            Account { nonce: 1, balance: U256::from(1000), bytecode_hash: Some(KECCAK_EMPTY) };
+        assert!(acc_empty_bytecode.has_bytecode(), "Account should have bytecode");
+
+        // Account with a non-empty bytecode hash
+        let acc_with_bytecode = Account {
+            nonce: 1,
+            balance: U256::from(1000),
+            bytecode_hash: Some(B256::from_slice(&[0x11u8; 32])),
+        };
+        assert!(acc_with_bytecode.has_bytecode(), "Account should have bytecode");
+    }
+
+    #[test]
+    fn test_account_get_bytecode_hash() {
+        // Account with no bytecode (should return KECCAK_EMPTY)
+        let acc_no_bytecode = Account { nonce: 0, balance: U256::ZERO, bytecode_hash: None };
+        assert_eq!(acc_no_bytecode.get_bytecode_hash(), KECCAK_EMPTY, "Should return KECCAK_EMPTY");
+
+        // Account with bytecode hash set to KECCAK_EMPTY
+        let acc_empty_bytecode =
+            Account { nonce: 1, balance: U256::from(1000), bytecode_hash: Some(KECCAK_EMPTY) };
+        assert_eq!(
+            acc_empty_bytecode.get_bytecode_hash(),
+            KECCAK_EMPTY,
+            "Should return KECCAK_EMPTY"
+        );
+
+        // Account with a valid bytecode hash
+        let bytecode_hash = B256::from_slice(&[0x11u8; 32]);
+        let acc_with_bytecode =
+            Account { nonce: 1, balance: U256::from(1000), bytecode_hash: Some(bytecode_hash) };
+        assert_eq!(
+            acc_with_bytecode.get_bytecode_hash(),
+            bytecode_hash,
+            "Should return the bytecode hash"
+        );
     }
 }

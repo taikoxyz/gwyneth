@@ -1,8 +1,9 @@
-use crate::{Address, Transaction, TransactionSigned, U256};
-use revm_primitives::{AuthorizationList, ChainAddress, TransactTo, TxEnv, TxKind};
-
-#[cfg(all(not(feature = "std"), feature = "optimism"))]
-use alloc::vec::Vec;
+use crate::{Transaction, TransactionSigned};
+use alloy_primitives::{Address, TxKind, U256};
+use alloy_consensus::Transaction as _;
+#[cfg(feature = "optimism")]
+use op_alloy_consensus::DepositTransaction;
+use revm_primitives::{AuthorizationList, ChainAddress, TransactTo, TxEnv};
 
 // Hard code for now.
 const BASE_CHAIN_ID: u64 = 167010; // Low level crate, should not depend on gwyneth but we need this info, just hard-code now!
@@ -18,21 +19,17 @@ pub trait FillTxEnv {
 impl FillTxEnv for TransactionSigned {
     fn fill_tx_env(&self, tx_env: &mut TxEnv, sender: Address) {
         #[cfg(feature = "optimism")]
-        let envelope = {
-            let mut envelope = Vec::with_capacity(self.length_without_header());
-            self.encode_enveloped(&mut envelope);
-            envelope
-        };
+        let envelope = alloy_eips::eip2718::Encodable2718::encoded_2718(self);
 
         let chain_ids = Some(std::iter::once(L1_CHAIN_ID)
-        .chain((0..NUM_L2_CHAINS)
-        .map(|i| BASE_CHAIN_ID + i))
-        .collect::<Vec<u64>>());
-        
+            .chain((0..NUM_L2_CHAINS)
+            .map(|i| BASE_CHAIN_ID + i))
+            .collect::<Vec<u64>>());
+
         let chain_id = self
-        .transaction
-        .chain_id()
-        .unwrap_or_else(|| chain_ids.as_ref().map(|ids| ids[0]).unwrap_or(BASE_CHAIN_ID));
+            .transaction
+            .chain_id()
+            .unwrap_or_else(|| chain_ids.as_ref().map(|ids| ids[0]).unwrap_or(BASE_CHAIN_ID));
 
         tx_env.caller = ChainAddress(chain_id, sender);
         match self.as_ref() {
@@ -96,7 +93,7 @@ impl FillTxEnv for TransactionSigned {
                 tx_env.gas_limit = tx.gas_limit;
                 tx_env.gas_price = U256::from(tx.max_fee_per_gas);
                 tx_env.gas_priority_fee = Some(U256::from(tx.max_priority_fee_per_gas));
-                tx_env.transact_to = convert_tx_kind(chain_id, tx.to);
+                tx_env.transact_to = convert_tx_kind(chain_id, tx.to.into());
                 tx_env.value = tx.value;
                 tx_env.data = tx.input.clone();
                 tx_env.chain_ids = chain_ids;
@@ -142,7 +139,7 @@ impl FillTxEnv for TransactionSigned {
     }
 }
 
-const fn convert_tx_kind(chain_id: u64, tx: TxKind) -> TransactTo {
+pub const fn convert_tx_kind(chain_id: u64, tx: TxKind) -> TransactTo {
     match tx {
         TxKind::Create => TransactTo::Create,
         TxKind::Call(address) => TransactTo::Call(ChainAddress(chain_id, address)),

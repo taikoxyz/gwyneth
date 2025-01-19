@@ -1,14 +1,12 @@
 use crate::{db::DatabaseError, lockfile::StorageLockError, writer::UnifiedStorageWriterError};
+use alloy_eips::BlockHashOrNumber;
+use alloy_primitives::{Address, BlockHash, BlockNumber, TxNumber, B256, U256};
 use derive_more::Display;
-use reth_primitives::{
-    Address, BlockHash, BlockHashOrNumber, BlockNumber, GotExpected, StaticFileSegment,
-    TxHashOrNumber, TxNumber, B256, U256,
-};
+use reth_primitives::{GotExpected, StaticFileSegment, TxHashOrNumber};
 
 #[cfg(feature = "std")]
 use std::path::PathBuf;
 
-#[cfg(not(feature = "std"))]
 use alloc::{boxed::Box, string::String};
 
 /// Provider result type.
@@ -135,6 +133,9 @@ pub enum ProviderError {
     /// Trying to insert data from an unexpected block number.
     #[display("trying to append data to {_0} as block #{_1} but expected block #{_2}")]
     UnexpectedStaticFileBlockNumber(StaticFileSegment, BlockNumber, BlockNumber),
+    /// Trying to insert data from an unexpected block number.
+    #[display("trying to append row to {_0} at index #{_1} but expected index #{_2}")]
+    UnexpectedStaticFileTxNumber(StaticFileSegment, TxNumber, TxNumber),
     /// Static File Provider was initialized as read-only.
     #[display("cannot get a writer on a read-only environment.")]
     ReadOnlyStaticFileAccess,
@@ -174,14 +175,13 @@ impl From<UnifiedStorageWriterError> for ProviderError {
     }
 }
 
-#[cfg(feature = "std")]
-impl std::error::Error for ProviderError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+impl core::error::Error for ProviderError {
+    fn source(&self) -> Option<&(dyn core::error::Error + 'static)> {
         match self {
-            Self::Database(source) => std::error::Error::source(source),
-            Self::Rlp(source) => std::error::Error::source(source),
-            Self::StorageLockError(source) => std::error::Error::source(source),
-            Self::UnifiedStorageWriterError(source) => std::error::Error::source(source),
+            Self::Database(source) => core::error::Error::source(source),
+            Self::Rlp(source) => core::error::Error::source(source),
+            Self::StorageLockError(source) => core::error::Error::source(source),
+            Self::UnifiedStorageWriterError(source) => core::error::Error::source(source),
             _ => Option::None,
         }
     }

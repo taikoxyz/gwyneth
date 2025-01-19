@@ -1,9 +1,12 @@
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 
+use alloy_rpc_types_engine::{ClientCode, ClientVersionV1};
 use reth_beacon_consensus::BeaconConsensusEngineHandle;
 use reth_chainspec::MAINNET;
-use reth_ethereum_engine_primitives::EthEngineTypes;
-use reth_evm_ethereum::EthEvmConfig;
+use reth_consensus::noop::NoopConsensus;
+use reth_ethereum_engine_primitives::{EthEngineTypes, EthereumEngineValidator};
+use reth_evm::execute::BasicBlockExecutorProvider;
+use reth_evm_ethereum::{execute::EthExecutionStrategyFactory, EthEvmConfig};
 use reth_network_api::noop::NoopNetwork;
 use reth_payload_builder::test_utils::spawn_test_payload_service;
 use reth_provider::test_utils::{NoopProvider, TestCanonStateSubscriptions};
@@ -15,9 +18,11 @@ use reth_rpc_builder::{
 use reth_rpc_engine_api::{capabilities::EngineCapabilities, EngineApi};
 use reth_rpc_layer::JwtSecret;
 use reth_rpc_server_types::RpcModuleSelection;
-use reth_rpc_types::engine::{ClientCode, ClientVersionV1};
 use reth_tasks::TokioTaskExecutor;
-use reth_transaction_pool::test_utils::{TestPool, TestPoolBuilder};
+use reth_transaction_pool::{
+    noop::NoopTransactionPool,
+    test_utils::{TestPool, TestPoolBuilder},
+};
 use tokio::sync::mpsc::unbounded_channel;
 
 /// Localhost with port 0 so a free port is used.
@@ -43,9 +48,11 @@ pub async fn launch_auth(secret: JwtSecret) -> AuthServerHandle {
         MAINNET.clone(),
         beacon_engine_handle,
         spawn_test_payload_service().into(),
+        NoopTransactionPool::default(),
         Box::<TokioTaskExecutor>::default(),
         client,
         EngineCapabilities::default(),
+        EthereumEngineValidator::new(MAINNET.clone()),
     );
     let module = AuthRpcModule::new(engine_api);
     module.start_server(config).await.unwrap()
@@ -119,6 +126,8 @@ pub fn test_rpc_builder() -> RpcModuleBuilder<
     TokioTaskExecutor,
     TestCanonStateSubscriptions,
     EthEvmConfig,
+    BasicBlockExecutorProvider<EthExecutionStrategyFactory>,
+    NoopConsensus,
 > {
     RpcModuleBuilder::default()
         .with_provider(NoopProvider::default())
@@ -126,5 +135,9 @@ pub fn test_rpc_builder() -> RpcModuleBuilder<
         .with_network(NoopNetwork::default())
         .with_executor(TokioTaskExecutor::default())
         .with_events(TestCanonStateSubscriptions::default())
-        .with_evm_config(EthEvmConfig::default())
+        .with_evm_config(EthEvmConfig::new(MAINNET.clone()))
+        .with_block_executor(
+            BasicBlockExecutorProvider::new(EthExecutionStrategyFactory::mainnet()),
+        )
+        .with_consensus(NoopConsensus::default())
 }

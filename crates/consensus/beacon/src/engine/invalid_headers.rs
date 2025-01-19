@@ -1,8 +1,10 @@
+use alloy_consensus::Header;
+use alloy_primitives::B256;
 use reth_metrics::{
     metrics::{Counter, Gauge},
     Metrics,
 };
-use reth_primitives::{Header, SealedHeader, B256};
+use reth_primitives::SealedHeader;
 use schnellru::{ByLength, LruMap};
 use std::sync::Arc;
 use tracing::warn;
@@ -109,7 +111,8 @@ mod tests {
     #[test]
     fn test_hit_eviction() {
         let mut cache = InvalidHeaderCache::new(10);
-        let header = Header::default().seal_slow();
+        let header = Header::default();
+        let header = SealedHeader::seal(header);
         cache.insert(header.clone());
         assert_eq!(cache.headers.get(&header.hash()).unwrap().hit_count, 0);
 

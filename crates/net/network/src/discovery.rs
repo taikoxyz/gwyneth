@@ -196,6 +196,11 @@ impl Discovery {
         }
     }
 
+    /// Returns discv5 handle.
+    pub fn discv5(&self) -> Option<Discv5> {
+        self.discv5.clone()
+    }
+
     /// Add a node to the discv4 table.
     pub(crate) fn add_discv5_node(&self, enr: Enr<SecretKey>) -> Result<(), NetworkError> {
         if let Some(discv5) = &self.discv5 {
@@ -209,6 +214,10 @@ impl Discovery {
     fn on_node_record_update(&mut self, record: NodeRecord, fork_id: Option<ForkId>) {
         let peer_id = record.id;
         let tcp_addr = record.tcp_addr();
+        if tcp_addr.port() == 0 {
+            // useless peer for p2p
+            return
+        }
         let udp_addr = record.udp_addr();
         let addr = PeerAddr::new(tcp_addr, Some(udp_addr));
         _ =

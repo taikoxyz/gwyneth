@@ -1,25 +1,24 @@
 use std::{marker::PhantomData, pin::Pin};
 
-use alloy_network::Network;
-use alloy_rpc_types::BlockNumberOrTag;
+use alloy_primitives::{BlockHash, BlockNumber, Bytes, B256};
+use alloy_rpc_types_eth::BlockNumberOrTag;
 use eyre::Ok;
 use futures_util::Future;
 use reth::{
     api::{BuiltPayload, EngineTypes, FullNodeComponents, PayloadBuilderAttributes},
     builder::FullNode,
     network::PeersHandleProvider,
-    payload::PayloadTypes,
     providers::{BlockReader, BlockReaderIdExt, CanonStateSubscriptions, StageCheckpointReader},
     rpc::{
         api::eth::helpers::{EthApiSpec, EthTransactions, TraceExt},
         types::engine::PayloadStatusEnum,
     },
 };
-use reth_node_builder::{EthApiTypes, NodeAddOns, NodeTypes};
-use reth_primitives::{BlockHash, BlockNumber, Bytes, B256};
-use reth_rpc_types::WithOtherFields;
+use reth_chainspec::EthereumHardforks;
+use reth_node_builder::{rpc::RethRpcAddOns, NodeTypes, NodeTypesWithEngine};
 use reth_stages_types::StageId;
 use tokio_stream::StreamExt;
+use url::Url;
 
 use crate::{
     engine_api::EngineApiTestContext, network::NetworkTestContext, payload::PayloadTestContext,
@@ -31,40 +30,49 @@ use crate::{
 pub struct NodeTestContext<Node, AddOns>
 where
     Node: FullNodeComponents,
-    AddOns: NodeAddOns<Node>,
+    AddOns: RethRpcAddOns<Node>,
 {
     /// The core structure representing the full node.
     pub inner: FullNode<Node, AddOns>,
     /// Context for testing payload-related features.
-    pub payload: PayloadTestContext<Node::Engine>,
+    pub payload: PayloadTestContext<<Node::Types as NodeTypesWithEngine>::Engine>,
     /// Context for testing network functionalities.
     pub network: NetworkTestContext<Node::Network>,
     /// Context for testing the Engine API.
-    pub engine_api: EngineApiTestContext<Node::Engine>,
+    pub engine_api: EngineApiTestContext<
+        <Node::Types as NodeTypesWithEngine>::Engine,
+        <Node::Types as NodeTypes>::ChainSpec,
+    >,
     /// Context for testing RPC features.
     pub rpc: RpcTestContext<Node, AddOns::EthApi>,
 }
 
-impl<Node, AddOns> NodeTestContext<Node, AddOns>
+impl<Node, Engine, AddOns> NodeTestContext<Node, AddOns>
 where
+    Engine: EngineTypes,
     Node: FullNodeComponents,
+    Node::Types: NodeTypesWithEngine<ChainSpec: EthereumHardforks, Engine = Engine>,
     Node::Network: PeersHandleProvider,
-    AddOns: NodeAddOns<Node>,
+    AddOns: RethRpcAddOns<Node>,
 {
     /// Creates a new test node
-    pub async fn new(node: FullNode<Node, AddOns>) -> eyre::Result<Self> {
+    pub async fn new(
+        node: FullNode<Node, AddOns>,
+        attributes_generator: impl Fn(u64) -> Engine::PayloadBuilderAttributes + 'static,
+    ) -> eyre::Result<Self> {
         let builder = node.payload_builder.clone();
 
         Ok(Self {
             inner: node.clone(),
-            payload: PayloadTestContext::new(builder).await?,
+            payload: PayloadTestContext::new(builder, attributes_generator).await?,
             network: NetworkTestContext::new(node.network.clone()),
             engine_api: EngineApiTestContext {
+                chain_spec: node.chain_spec(),
                 engine_api_client: node.auth_server_handle().http_client(),
                 canonical_stream: node.provider.canonical_state_stream(),
-                _marker: PhantomData::<Node::Engine>,
+                _marker: PhantomData::<Engine>,
             },
-            rpc: RpcTestContext { inner: node.rpc_registry },
+            rpc: RpcTestContext { inner: node.add_ons_handle.rpc_registry },
         })
     }
 
@@ -82,26 +90,17 @@ where
         &mut self,
         length: u64,
         tx_generator: impl Fn(u64) -> Pin<Box<dyn Future<Output = Bytes>>>,
-        attributes_generator: impl Fn(u64) -> <Node::Engine as PayloadTypes>::PayloadBuilderAttributes
-            + Copy,
-    ) -> eyre::Result<
-        Vec<(
-            <Node::Engine as PayloadTypes>::BuiltPayload,
-            <Node::Engine as PayloadTypes>::PayloadBuilderAttributes,
-        )>,
-    >
+    ) -> eyre::Result<Vec<(Engine::BuiltPayload, Engine::PayloadBuilderAttributes)>>
     where
-        <Node::Engine as EngineTypes>::ExecutionPayloadV3:
-            From<<Node::Engine as PayloadTypes>::BuiltPayload> + PayloadEnvelopeExt,
+        Engine::ExecutionPayloadEnvelopeV3: From<Engine::BuiltPayload> + PayloadEnvelopeExt,
+        Engine::ExecutionPayloadEnvelopeV4: From<Engine::BuiltPayload> + PayloadEnvelopeExt,
         AddOns::EthApi: EthApiSpec + EthTransactions + TraceExt,
-        <AddOns::EthApi as EthApiTypes>::NetworkTypes:
-            Network<TransactionResponse = WithOtherFields<alloy_rpc_types::Transaction>>,
     {
         let mut chain = Vec::with_capacity(length as usize);
         for i in 0..length {
             let raw_tx = tx_generator(i).await;
             let tx_hash = self.rpc.inject_tx(raw_tx).await?;
-            let (payload, eth_attr) = self.advance_block(vec![], attributes_generator).await?;
+            let (payload, eth_attr) = self.advance_block().await?;
             let block_hash = payload.block().hash();
             let block_number = payload.block().number;
             self.assert_new_block(tx_hash, block_hash, block_number).await?;
@@ -116,17 +115,13 @@ where
     /// It triggers the resolve payload via engine api and expects the built payload event.
     pub async fn new_payload(
         &mut self,
-        attributes_generator: impl Fn(u64) -> <Node::Engine as PayloadTypes>::PayloadBuilderAttributes,
-    ) -> eyre::Result<(
-        <<Node as NodeTypes>::Engine as PayloadTypes>::BuiltPayload,
-        <<Node as NodeTypes>::Engine as PayloadTypes>::PayloadBuilderAttributes,
-    )>
+    ) -> eyre::Result<(Engine::BuiltPayload, Engine::PayloadBuilderAttributes)>
     where
-        <Node::Engine as EngineTypes>::ExecutionPayloadV3:
-            From<<Node::Engine as PayloadTypes>::BuiltPayload> + PayloadEnvelopeExt,
+        <Engine as EngineTypes>::ExecutionPayloadEnvelopeV3:
+            From<Engine::BuiltPayload> + PayloadEnvelopeExt,
     {
         // trigger new payload building draining the pool
-        let eth_attr = self.payload.new_payload(attributes_generator).await.unwrap();
+        let eth_attr = self.payload.new_payload().await.unwrap();
         // first event is the payload attributes
         self.payload.expect_attr_event(eth_attr.clone()).await?;
         // wait for the payload builder to have finished building
@@ -140,26 +135,18 @@ where
     /// Advances the node forward one block
     pub async fn advance_block(
         &mut self,
-        versioned_hashes: Vec<B256>,
-        attributes_generator: impl Fn(u64) -> <Node::Engine as PayloadTypes>::PayloadBuilderAttributes,
-    ) -> eyre::Result<(
-        <Node::Engine as PayloadTypes>::BuiltPayload,
-        <<Node as NodeTypes>::Engine as PayloadTypes>::PayloadBuilderAttributes,
-    )>
+    ) -> eyre::Result<(Engine::BuiltPayload, Engine::PayloadBuilderAttributes)>
     where
-        <Node::Engine as EngineTypes>::ExecutionPayloadV3:
-            From<<Node::Engine as PayloadTypes>::BuiltPayload> + PayloadEnvelopeExt,
+        <Engine as EngineTypes>::ExecutionPayloadEnvelopeV3:
+            From<Engine::BuiltPayload> + PayloadEnvelopeExt,
+        <Engine as EngineTypes>::ExecutionPayloadEnvelopeV4:
+            From<Engine::BuiltPayload> + PayloadEnvelopeExt,
     {
-        let (payload, eth_attr) = self.new_payload(attributes_generator).await?;
+        let (payload, eth_attr) = self.new_payload().await?;
 
         let block_hash = self
             .engine_api
-            .submit_payload(
-                payload.clone(),
-                eth_attr.clone(),
-                PayloadStatusEnum::Valid,
-                versioned_hashes,
-            )
+            .submit_payload(payload.clone(), eth_attr.clone(), PayloadStatusEnum::Valid)
             .await?;
 
             
@@ -248,5 +235,11 @@ where
             }
         }
         Ok(())
+    }
+
+    /// Returns the RPC URL.
+    pub fn rpc_url(&self) -> Url {
+        let addr = self.inner.rpc_server_handle().http_local_addr().unwrap();
+        format!("http://{}", addr).parse().unwrap()
     }
 }

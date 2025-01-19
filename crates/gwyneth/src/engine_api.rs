@@ -6,17 +6,14 @@ use reth_ethereum_engine_primitives::ExecutionPayloadEnvelopeV3;
 use reth_node_api::EngineTypes;
 use reth_node_core::args::RpcServerArgs;
 use reth_payload_builder::PayloadId;
-use reth_primitives::B256;
 use reth_provider::CanonStateNotificationStream;
 use reth_rpc_api::EngineApiClient;
 use reth_rpc_layer::AuthClientService;
-use reth_rpc_types::{
-    engine::{ForkchoiceState, PayloadStatusEnum}, BlockNumberOrTag, ExecutionPayloadV3
-};
+use alloy_rpc_types_engine::{ForkchoiceState, PayloadStatusEnum};
 use std::{marker::PhantomData, net::Ipv4Addr};
 use reth_rpc_builder::constants;
-
-use crate::exex::BASE_CHAIN_ID;
+use alloy_primitives::{address, b256, Address, BlockNumber, B256, U256};
+use alloy_rpc_types_engine::ExecutionPayloadV3;
 
 /// Helper for engine api operations
 pub struct EngineApiContext<E> {
@@ -30,7 +27,7 @@ impl<E: EngineTypes> EngineApiContext<E> {
     pub async fn get_payload_v3(
         &self,
         payload_id: PayloadId,
-    ) -> eyre::Result<E::ExecutionPayloadV3> {
+    ) -> eyre::Result<E::ExecutionPayloadEnvelopeV3> {
         Ok(EngineApiClient::<E>::get_payload_v3(&self.engine_api_client, payload_id).await?)
     }
 
@@ -51,10 +48,10 @@ impl<E: EngineTypes> EngineApiContext<E> {
         versioned_hashes: Vec<B256>,
     ) -> eyre::Result<B256>
     where
-        E::ExecutionPayloadV3: From<E::BuiltPayload> + PayloadEnvelopeExt,
+        E::ExecutionPayloadEnvelopeV3: From<E::BuiltPayload> + PayloadEnvelopeExt,
     {
         // setup payload for submission
-        let envelope_v3: <E as EngineTypes>::ExecutionPayloadV3 = payload.into();
+        let envelope_v3: <E as EngineTypes>::ExecutionPayloadEnvelopeV3 = payload.into();
 
         // submit payload to engine api
         let submission = EngineApiClient::<E>::new_payload_v3(
@@ -116,6 +113,8 @@ impl PayloadEnvelopeExt for ExecutionPayloadEnvelopeV3 {
 pub trait RpcServerArgsExEx {
     fn with_static_l2_rpc_ip_and_port(self, chain_id: u64) -> Self;
 }
+
+use crate::exex::BASE_CHAIN_ID;
 
 impl RpcServerArgsExEx for RpcServerArgs {
     fn with_static_l2_rpc_ip_and_port(mut self, chain_id: u64) -> Self {

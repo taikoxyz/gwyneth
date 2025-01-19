@@ -1,13 +1,12 @@
+use alloy_eips::BlockNumHash;
+use alloy_primitives::{BlockHash, BlockNumber};
 use reth_blockchain_tree_api::{
     self,
     error::{BlockchainTreeError, CanonicalError, InsertBlockError, ProviderError},
     BlockValidationKind, BlockchainTreeEngine, BlockchainTreeViewer, CanonicalOutcome,
     InsertPayloadOk,
 };
-use reth_primitives::{
-    BlockHash, BlockNumHash, BlockNumber, Receipt, SealedBlock, SealedBlockWithSenders,
-    SealedHeader,
-};
+use reth_primitives::{Receipt, SealedBlock, SealedBlockWithSenders, SealedHeader};
 use reth_provider::{
     BlockchainTreePendingStateProvider, CanonStateNotificationSender, CanonStateNotifications,
     CanonStateSubscriptions, FullExecutionDataProvider,
@@ -61,18 +60,18 @@ impl BlockchainTreeEngine for NoopBlockchainTree {
         Ok(())
     }
 
+    fn update_block_hashes_and_clear_buffered(
+        &self,
+    ) -> Result<BTreeMap<BlockNumber, BlockHash>, CanonicalError> {
+        Ok(BTreeMap::new())
+    }
+
     fn connect_buffered_blocks_to_canonical_hashes(&self) -> Result<(), CanonicalError> {
         Ok(())
     }
 
     fn make_canonical(&self, block_hash: BlockHash) -> Result<CanonicalOutcome, CanonicalError> {
         Err(BlockchainTreeError::BlockHashNotFoundInChain { block_hash }.into())
-    }
-
-    fn update_block_hashes_and_clear_buffered(
-        &self,
-    ) -> Result<BTreeMap<BlockNumber, BlockHash>, CanonicalError> {
-        Ok(BTreeMap::new())
     }
 }
 
