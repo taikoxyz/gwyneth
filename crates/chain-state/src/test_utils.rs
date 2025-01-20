@@ -14,8 +14,8 @@ use reth_primitives::{
     proofs::{calculate_receipt_root, calculate_transaction_root, calculate_withdrawals_root},
     BlockBody, Receipt, Receipts, SealedBlock, SealedBlockWithSenders, SealedHeader, Transaction,
     TransactionSigned, TransactionSignedEcRecovered,
-    ETHEREUM_CHAIN_ID,
 };
+use reth_primitives_traits::constants::ETHEREUM_CHAIN_ID;
 use reth_trie::{root::state_root_unhashed, updates::TrieUpdates, HashedPostState};
 use revm::{
     db::BundleState,

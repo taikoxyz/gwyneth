@@ -119,7 +119,7 @@ impl<DB> BatchExecutor<DB> for MockExecutorProvider {
 impl<S, DB> BasicBlockExecutor<S, DB>
 where
     S: BlockExecutionStrategy<DB>,
-    DB: Database,
+    DB: SyncDatabase,
 {
     /// Provides safe read access to the state
     pub fn with_state<F, R>(&self, f: F) -> R
@@ -141,7 +141,7 @@ where
 impl<S, DB> BasicBatchExecutor<S, DB>
 where
     S: BlockExecutionStrategy<DB>,
-    DB: Database,
+    DB: SyncDatabase,
 {
     /// Provides safe read access to the state
     pub fn with_state<F, R>(&self, f: F) -> R
