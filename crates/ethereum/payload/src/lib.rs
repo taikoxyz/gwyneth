@@ -592,7 +592,7 @@ where
     let sealed_block = block.seal_slow();
     debug!(target: "payload_builder", ?sealed_block, "sealed built block");
 
-    println!("default payload done [{:?}]: {:?}", sealed_block.hash(), sealed_block.state_root);
+    //println!("default payload done [{:?}]: {:?}", sealed_block.hash(), sealed_block.state_root);
 
     let mut payload = EthBuiltPayload::new(attributes.id, sealed_block, total_fees);
 

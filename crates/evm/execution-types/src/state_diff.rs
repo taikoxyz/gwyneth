@@ -106,7 +106,7 @@ pub fn merge_reverts(reverts: &Reverts) -> Reverts {
             }
         }
     }
-    println!("original reverts: {:?}", reverts);
-    println!("new reverts: {:?}", merged_reverts);
+    //println!("original reverts: {:?}", reverts);
+    //println!("new reverts: {:?}", merged_reverts);
     Reverts::new(vec![merged_reverts.into_iter().collect()])
 }

@@ -129,16 +129,16 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
             {
                 println!("block_number: {:?}", block_number);
                 println!("block hash: {:?}", meta.blockHash);
-                println!("tx_list: {:?}", meta.txList);
-                println!("state diffs: {:?}", meta.stateDiffs);
+                //println!("tx_list: {:?}", meta.txList);
+                //println!("state diffs: {:?}", meta.stateDiffs);
                 //println!("L1 state diff: {:?}", meta.l1StateDiff.);
                 let transactions: Vec<TransactionSigned> = decode_transactions(&meta.txList);
-                println!("transactions: {:?}", transactions);
+                println!("transactions: {:?}", transactions.len());
 
                 let da: GwynethDA = bincode::deserialize(&meta.stateDiffs.to_vec()).unwrap_or_else(|err| {
                     panic!("DA can't be decoded: {}", err);
                 });
-                println!("da: {:?}", da);
+                //println!("da: {:?}", da);
 
                 let all_transactions: Vec<TransactionSigned> = decode_transactions(&meta.txList);
                 let node_chain_id = BASE_CHAIN_ID + (node_idx as u64);
@@ -268,6 +268,10 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
 
 
                 if chain_da.block_hash != B256::ZERO {
+                    if block_hash != chain_da.block_hash {
+                        println!("da data for block: {:?}", chain_da);
+                        println!("reth block: {:?}", payload.block());
+                    }
                     assert_eq!(block_hash, chain_da.block_hash, "unexpected block hash for chain {} block {}", node_chain_id, payload.block().number);
                 }
 
