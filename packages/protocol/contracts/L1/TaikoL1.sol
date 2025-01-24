@@ -152,6 +152,7 @@ contract TaikoL1 is EssentialContract, TaikoEvents, TaikoErrors {
         // }
 
         require(_block.timestamp == block.timestamp, "included in an unexpected L1 block");
+        require(_block.parentBlockHash == blockhash(block.number - 1), "included in an unexpected L1 block (hash)");
 
         // Apply L1 state updates
         for (uint i = 0; i < _block.l1StateDiff.accounts.length; i++) {

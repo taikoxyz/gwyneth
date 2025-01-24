@@ -30,6 +30,7 @@ use reth_transaction_pool::{
 };
 use RollupContract::{BlockProposed, RollupContractEvents};
 use reth_provider::BlockReaderIdExt;
+use reth_provider::ROLLUP_SYNC_DATA;
 
 const ROLLUP_CONTRACT_ADDRESS: Address = address!("9fCF7D13d10dEdF17d0f24C62f0cf4ED462f65b7");
 pub const BASE_CHAIN_ID: u64 = 167010;
@@ -100,6 +101,13 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                 for i in 0..self.nodes.len() {
                     self.commit(&committed_chain, i).await?;
                 }
+
+                // Update the sync data
+                unsafe {
+                    ROLLUP_SYNC_DATA = committed_chain.tip().number;
+                    println!("Updated sync data: {}", ROLLUP_SYNC_DATA);
+                }
+
                 self.ctx.events.send(ExExEvent::FinishedHeight(committed_chain.tip().number))?;
             }
         }

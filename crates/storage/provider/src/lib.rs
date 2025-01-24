@@ -76,3 +76,5 @@ pub static NODES: LazyLock<Mutex<HashMap<u64, BlockchainProvider<Arc<DatabaseEnv
 //pub static NODES: LazyLock<Mutex<HashMap<u64, ProviderFactory<Arc<DatabaseEnv>>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 // pub static NODES: LazyLock<Mutex<HashMap<u64, ProviderFactory<BlockchainProvider<Arc<TempDatabase<DatabaseEnv>>>>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub static mut ROLLUP_SYNC_DATA: u64 = 0;

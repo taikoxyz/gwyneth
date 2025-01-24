@@ -18,6 +18,7 @@ use reth_rpc_types::{
 };
 use reth_transaction_pool::{PoolTransaction, TransactionPool};
 use tracing::trace;
+use reth_provider::ROLLUP_SYNC_DATA;
 
 use crate::{
     helpers::{
@@ -358,6 +359,10 @@ pub trait EthApi<T: RpcObject, B: RpcObject> {
         keys: Vec<JsonStorageKey>,
         block_number: Option<BlockId>,
     ) -> RpcResult<EIP1186AccountProofResponse>;
+
+    /// Returns the L1 block to which all exexes are synced
+    #[method(name = "getSyncData")]
+    async fn get_sync_data(&self) -> RpcResult<U64>;
 }
 
 #[async_trait::async_trait]
@@ -835,5 +840,13 @@ where
     ) -> RpcResult<EIP1186AccountProofResponse> {
         trace!(target: "rpc::eth", ?address, ?keys, ?block_number, "Serving eth_getProof");
         Ok(EthState::get_proof(self, address, keys, block_number)?.await?)
+    }
+
+    /// Handler for: `eth_getSyncData`
+    async fn get_sync_data(&self) -> RpcResult<U64> {
+        let sync_data = unsafe {
+            ROLLUP_SYNC_DATA
+        };
+        Ok(U64::from(sync_data))
     }
 }

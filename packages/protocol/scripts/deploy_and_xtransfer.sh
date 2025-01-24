@@ -114,14 +114,8 @@ else
     exit 1
 fi
 
-# Add a delay before xTransfer to ensure everything is ready
-echo -e "${YELLOW}Waiting 5 seconds before executing xTransfer...${NC}"
-sleep 5
-
 echo -e "${GREEN}Executing xTransfer...${NC}"
 forge script scripts/XTransfer.s.sol --rpc-url http://127.0.0.1:32005 -vvvv --broadcast --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --legacy
-
-sleep 5
 
 echo -e "${GREEN}Executing xWithdraw...${NC}"
 forge script scripts/XWithdraw.s.sol --rpc-url http://127.0.0.1:32006 -vvvv --broadcast --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --legacy
