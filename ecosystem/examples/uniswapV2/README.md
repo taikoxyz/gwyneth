@@ -25,10 +25,12 @@ The deployment addresses (`FACTORY_ADDRESS`, `WETH`) below are valid **only if t
    ```bash
    git submodule init
    forge build
-3. Deploy the contracts
+3. Deploy the contracts on L1 (and L2A and L2B too for sync comp).
    ```bash
-   $ forge script script/UniswapDeployer.s.sol --rpc-url http://localhost:32002 --broadcast --legacy
-   $ forge script script/DeployTokens.s.sol --rpc-url http://localhost:32002 --broadcast --legacy
+   $ forge script script/UniswapDeployer.s.sol --rpc-url http://localhost:32002(5 or 6) --broadcast --legacy
+   $ forge script script/DeployTokens.s.sol --rpc-url http://localhost:32002(5 or 6) --broadcast --legacy
+4. On L2s, we need UniswapPortal contracts too.
+   $ forge script script/DeployPortal.s.sol --rpc-url http://localhost:32005 (6) --broadcast --legacy
 ## 2. Uniswap SDK
 
 1. Clone the repository and switch to the `gwyneth_uniswapV2` branch:
@@ -62,3 +64,14 @@ The deployment addresses (`FACTORY_ADDRESS`, `WETH`) below are valid **only if t
 ## Additional Notes
 Ensure that the repositories are properly structured in your working directory for dependency resolution.
 If deployment addresses change, you will need to update the Interface and SDK configurations.
+
+## One example E2E testing, you should be doing the following:
+
+1. On `gwynethification` branch in the smart contract repository (https://github.com/taikoxyz/uniswap-v2), deploy the contracts: (before, do a git submodule init and update!)
+   ```bash
+   ./script/deployContracts.sh
+2. On Uniswap Interface/UI repository, change to `xTransfer_UI` branch and shoot up the UI as described above.
+Add liquidity (manually): a pool with 1M SLOTH + 200K Taiko tokens (amount not important, but tokens should be) - both on L1 and L2A.
+3. Initiate a cross-swap in the smart contract repository with the command:
+   ```bash
+   forge script script/CrossSwap.s.sol --rpc-url http://localhost:32005 --broadcast --legacy -vvv
