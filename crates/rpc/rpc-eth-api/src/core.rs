@@ -18,7 +18,7 @@ use reth_rpc_types::{
 };
 use reth_transaction_pool::{PoolTransaction, TransactionPool};
 use tracing::trace;
-use reth_provider::ROLLUP_SYNC_DATA;
+use reth_provider::{GWYNETH_SYNCED_L1_BLOCK_IDX, GWYNETH_SYNCED_L2_BLOCK_IDX};
 
 use crate::{
     helpers::{
@@ -360,9 +360,13 @@ pub trait EthApi<T: RpcObject, B: RpcObject> {
         block_number: Option<BlockId>,
     ) -> RpcResult<EIP1186AccountProofResponse>;
 
-    /// Returns the L1 block to which all exexes are synced
-    #[method(name = "getSyncData")]
-    async fn get_sync_data(&self) -> RpcResult<U64>;
+    /// Returns the L1 block for which all L2 blocks have been processed
+    #[method(name = "getSyncedL1BlockIdx")]
+    async fn get_synced_l1_block_idx(&self) -> RpcResult<U64>;
+
+    /// Returns the L2 block to which this L2 is synced (but perhaps not yet fully processed)
+    #[method(name = "getSyncedL2BlockIdx")]
+    async fn get_synced_l2_block_idx(&self) -> RpcResult<U64>;
 }
 
 #[async_trait::async_trait]
@@ -842,11 +846,20 @@ where
         Ok(EthState::get_proof(self, address, keys, block_number)?.await?)
     }
 
-    /// Handler for: `eth_getSyncData`
-    async fn get_sync_data(&self) -> RpcResult<U64> {
-        let sync_data = unsafe {
-            ROLLUP_SYNC_DATA
+    /// Handler for: `eth_getSyncedL1BlockIdx`
+    async fn get_synced_l1_block_idx(&self) -> RpcResult<U64> {
+        let l1_block_idx = unsafe {
+            GWYNETH_SYNCED_L1_BLOCK_IDX
         };
-        Ok(U64::from(sync_data))
+        Ok(U64::from(l1_block_idx))
+    }
+
+    /// Handler for: `eth_getSyncedL2BlockIdx`
+    async fn get_synced_l2_block_idx(&self) -> RpcResult<U64> {
+        let chain_id = EthApiSpec::chain_id(self).into_limbs()[0];
+        let l2_block_idx = unsafe {
+            *GWYNETH_SYNCED_L2_BLOCK_IDX.lock().unwrap().get(&chain_id).unwrap_or(&0)
+        };
+        Ok(U64::from(l2_block_idx))
     }
 }

@@ -2,6 +2,8 @@ use std::{collections::HashMap, marker::PhantomData, sync::Arc};
 
 use alloy_rlp::Decodable;
 use alloy_sol_types::{sol, SolEventInterface};
+use reth_network::NetworkInfo;
+use reth_rpc_api::eth::helpers::EthApiSpec;
 
 use crate::{
     engine_api::EngineApiContext, GwynethEngineTypes, GwynethNode, GwynethPayloadAttributes,
@@ -30,7 +32,7 @@ use reth_transaction_pool::{
 };
 use RollupContract::{BlockProposed, RollupContractEvents};
 use reth_provider::BlockReaderIdExt;
-use reth_provider::ROLLUP_SYNC_DATA;
+use reth_provider::{GWYNETH_SYNCED_L1_BLOCK_IDX, GWYNETH_SYNCED_L2_BLOCK_IDX};
 
 const ROLLUP_CONTRACT_ADDRESS: Address = address!("9fCF7D13d10dEdF17d0f24C62f0cf4ED462f65b7");
 pub const BASE_CHAIN_ID: u64 = 167010;
@@ -86,6 +88,9 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                 _marker: PhantomData::<GwynethEngineTypes>,
             };
             engine_apis.push(engine_api);
+
+            let mut l2_block_indices = GWYNETH_SYNCED_L2_BLOCK_IDX.lock().unwrap();
+            l2_block_indices.insert(node.chain_spec().chain().id(), 0);
         }
         Ok(Self { ctx, nodes, /* payload_event_stream, */ engine_apis, num_l2_blocks: 0 })
     }
@@ -104,8 +109,8 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
 
                 // Update the sync data
                 unsafe {
-                    ROLLUP_SYNC_DATA = committed_chain.tip().number;
-                    println!("Updated sync data: {}", ROLLUP_SYNC_DATA);
+                    GWYNETH_SYNCED_L1_BLOCK_IDX = committed_chain.tip().number;
+                    println!("Updated L1 sync data: {}", GWYNETH_SYNCED_L1_BLOCK_IDX);
                 }
 
                 self.ctx.events.send(ExExEvent::FinishedHeight(committed_chain.tip().number))?;
@@ -288,7 +293,6 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
 
                 // loop {
                 //     // wait for the block to commit
-                //     tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
                 //     if let Some(latest_block) =
                 //         self.nodes[node_idx].provider.block_by_number_or_tag(BlockNumberOrTag::Latest)?
                 //     {
@@ -299,10 +303,14 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                 //             break
                 //         }
                 //     }
-                //     println!("waiting on L2 block for {}: {}", node_chain_id, payload.block().number)
+                //     println!("waiting on L2 block for {}: {}", node_chain_id, payload.block().number);
+                //     tokio::time::sleep(std::time::Duration::from_millis(2)).await;
                 // }
 
                 println!("[L1 block {}] Done with block {}: {}", block.number, node_chain_id, payload.block().number);
+
+                let mut l2_block_indices = GWYNETH_SYNCED_L2_BLOCK_IDX.lock().unwrap();
+                l2_block_indices.insert(self.nodes[node_idx].chain_spec().chain().id(), payload.block().number);
 
                 self.num_l2_blocks += 1;
             }
