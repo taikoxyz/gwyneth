@@ -74,4 +74,4 @@ If deployment addresses change, you will need to update the Interface and SDK co
 Add liquidity (manually): a pool with 1M SLOTH + 200K Taiko tokens (amount not important, but tokens should be) - both on L1 and L2A.
 3. Initiate a cross-swap in the smart contract repository with the command:
    ```bash
-   forge script script/CrossSwap.s.sol --rpc-url http://localhost:32005 --broadcast --legacy -vvv
+   forge script script/CrossSwap.s.sol --rpc-url http://localhost:32005 --broadcast --legacy -vvv --gas-estimate-multiplier 200
