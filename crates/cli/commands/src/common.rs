@@ -86,7 +86,7 @@ impl EnvironmentArgs {
             ),
             AccessRights::RO => (
                 Arc::new(open_db_read_only(&db_path, self.db.database_args())?),
-                StaticFileProvider::read_only(sf_path)?,
+                StaticFileProvider::read_only(sf_path, false)?,
             ),
         };
 
