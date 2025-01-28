@@ -20,7 +20,7 @@ logging.basicConfig(
 
 def fetch_logs():
     try:
-        response = requests.get('http://localhost:32005')
+        response = requests.get('http://localhost:32004')
 
         # Create a timestamp for the filename
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
