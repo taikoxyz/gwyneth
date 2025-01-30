@@ -84,7 +84,12 @@ fi
 
 # Run the Kurtosis command and capture its output
 echo "Running Kurtosis command..."
-KURTOSIS_OUTPUT=$(kurtosis run github.com/adaki2004/ethereum-package --args-file ./scripts/confs/network_params.yaml)
+if [[ "$(uname)" == "Darwin" ]]; then
+    KURTOSIS_OUTPUT=$(kurtosis run github.com/adaki2004/ethereum-package --args-file ./scripts/confs/network_params.yaml)
+else
+    KURTOSIS_OUTPUT=$(kurtosis run github.com/adaki2004/ethereum-package@update_with_upstream --args-file ./scripts/confs/network_params.yaml)
+fi
+
 
 # Extract the Blockscout port
 BLOCKSCOUT_PORT=$(echo "$KURTOSIS_OUTPUT" | grep -A 5 "^[a-f0-9]\+ *blockscout " | grep "http:" | sed -E 's/.*-> http:\/\/127\.0\.0\.1:([0-9]+).*/\1/' | head -n 1)
@@ -105,6 +110,7 @@ USER_SERVICES_SECTION=$(echo "$KURTOSIS_OUTPUT" | awk '/^=======================
 # Print the "User Services" section for debugging
 echo "User Services Section:"
 echo "$USER_SERVICES_SECTION"
+echo "$USER_SERVICES_SECTION"> port_config
 # Extract the dynamic port assigned to the rpc service for "el-1-reth-lighthouse"
 RPC_PORT=$(echo "$USER_SERVICES_SECTION" | grep -A 5 "el-1-reth-lighthouse" | grep "rpc: 8545/tcp" | sed -E 's/.* -> 127.0.0.1:([0-9]+).*/\1/')
 if [ -z "$RPC_PORT" ]; then
