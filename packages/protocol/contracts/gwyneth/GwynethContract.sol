@@ -2,10 +2,10 @@
 pragma solidity ^0.8.19;
 
 
-import "../L1/TaikoData.sol";
+import "../L1/GwynethData.sol";
 
 contract GwynethContract {
-    function applyStateDelta(TaikoData.StateDiffStorageSlot[] calldata slots)
+    function applyStateDelta(GwynethData.StateDiffStorageSlot[] calldata slots)
         external
     {
         // TODO(Brecht): check msg.sender
