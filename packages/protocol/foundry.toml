@@ -11,6 +11,7 @@ ffi = true
 memory_limit = 2_073_741_824
 solc_version = "0.8.24"
 evm_version = "cancun"
+via_ir = true
 remappings = [
   "@openzeppelin/contracts-upgradeable/=node_modules/@openzeppelin/contracts-upgradeable/",
   "@openzeppelin/contracts/=node_modules/@openzeppelin/contracts/",

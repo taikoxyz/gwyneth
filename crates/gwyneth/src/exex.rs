@@ -69,7 +69,7 @@ pub type GwynethFullNode = FullNode<
     EthereumAddOns,
 >;
 
-sol!(RollupContract, "TaikoL1.json");
+sol!(RollupContract, "Gwyneth.json");
 
 pub struct Rollup<Node: reth_node_api::FullNodeComponents> {
     ctx: ExExContext<Node>,
@@ -145,6 +145,7 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                 //println!("tx_list: {:?}", meta.txList);
                 //println!("state diffs: {:?}", meta.stateDiffs);
                 //println!("L1 state diff: {:?}", meta.l1StateDiff.);
+
                 let transactions: Vec<TransactionSigned> = decode_transactions(&meta.txList);
                 println!("transactions: {:?}", transactions.len());
 
@@ -187,10 +188,10 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                 let attrs = GwynethPayloadAttributes {
                     inner: EthPayloadAttributes {
                         timestamp: block.timestamp,
-                        prev_randao: /*block.mix_hash*/ B256::ZERO,
+                        prev_randao: block.mix_hash,
                         suggested_fee_recipient: meta.coinbase,
                         withdrawals: Some(vec![]),
-                        parent_beacon_block_root: /*block.parent_beacon_block_root*/ Some(B256::ZERO),
+                        parent_beacon_block_root: block.parent_beacon_block_root,
                     },
                     transactions: Some(filtered_transactions.clone()),
                     chain_da: chain_da.clone(),

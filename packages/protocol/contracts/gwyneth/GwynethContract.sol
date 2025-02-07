@@ -8,7 +8,7 @@ contract GwynethContract {
     function applyStateDelta(GwynethData.StateDiffStorageSlot[] calldata slots)
         external
     {
-        // TODO(Brecht): check msg.sender
+        //require(msg.sender == gwyneth, "not from gwyneth contract");
         // Run over all state changes
         for (uint256 i = 0; i < slots.length; i++) {
             // Apply the updated state to the storage

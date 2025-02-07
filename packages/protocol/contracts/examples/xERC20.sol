@@ -11,6 +11,16 @@ contract xERC20 is GwynethContract {
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
 
+    using EVM for address;
+
+    function ChainAddress(uint256 chainId, xERC20 contractAddr) internal view returns (xERC20) {
+        return xERC20(address(contractAddr).onChain(chainId));
+    }
+
+    function on(uint256 chainId) internal view returns (xERC20) {
+        return ChainAddress(chainId, this);
+    }
+
     constructor(uint256 totalSupply) {
         balanceOf[msg.sender] = totalSupply;
     }
@@ -21,6 +31,10 @@ contract xERC20 is GwynethContract {
         balanceOf[to] += value;
         emit Transfer(msg.sender, to, value);
         return value;
+    }
+
+    function xTransfer(uint256 fromChain, uint256 toChain, address to, uint256 value) public returns (uint256) {
+        return on(fromChain)._xTransfer(msg.sender, toChain, to, value);
     }
 
     function _transfer(address from, address to, uint256 value) public returns (uint256) {
@@ -36,22 +50,15 @@ contract xERC20 is GwynethContract {
         return value;
     }
 
-    function xTransfer(uint256 fromChain, uint256 toChain, address to, uint256 value) public returns (uint256) {
-        EVM.xCallOptions(fromChain);
-        return this._xTransfer(msg.sender, toChain, to, value);
-    }
-
     function _xTransfer(address from, uint256 chain, address to, uint256 value) external returns (uint256) {
         require(msg.sender == address(this), "Only contract itself can call this function");
         balanceOf[from] -= value;
-        EVM.xCallOptions(chain);
-        return this._mint(to, value);
+        return on(chain)._mint(to, value);
     }
 
     function xTransfer(uint256 chain, address to, uint256 value) public returns (uint256) {
         balanceOf[msg.sender] -= value;
-        EVM.xCallOptions(chain);
-        return this._mint(to, value);
+        return on(chain)._mint(to, value);
     }
 
     function sandboxedTransfer(uint256 chain, address to, uint256 value) public returns (uint256) {

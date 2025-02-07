@@ -22,26 +22,36 @@ library GwynethData {
         uint64 timestamp;
         uint24 txListByteOffset;
         uint24 txListByteSize;
-        // todo: Do we need this below ?
-        // bytes32 blobId OR blobHash; ? as per in current taiko-mono's preconfirmation branch ?
         bool blobUsed;
         bytes txList;
         bytes stateDiffs;
-        StateDiff l1StateDiff;
+        L1Block l1Block;
     }
 
-    /// @dev Struct representing the state delta that has to be applied to L1
-    struct StateDiff {
-        StateDiffAccount[] accounts;
+    /// @dev Struct representing the state that has to be applied to L1 in sequential order
+    struct L1Block {
+        Transaction[] transactions;
     }
 
-    struct StateDiffAccount {
+    struct Transaction {
         address addr;
+        Call[] calls;
         StateDiffStorageSlot[] slots;
+    }
+
+    struct Call {
+        bytes data;
+        uint256 value;
+        ReturnData[] returnData;
     }
 
     struct StateDiffStorageSlot {
         bytes32 key;
         bytes32 value;
+    }
+
+    struct ReturnData {
+        bytes data;
+        bool isRevert;
     }
 }
