@@ -25,7 +25,7 @@ contract Gwyneth {
     /// block.
     event BlockProposed(uint256 indexed blockId, GwynethData.BlockMetadata meta);
 
-    event Executed(address to, uint256 value, bytes data);
+    event Executed(address to, uint256 value, bytes data, bool success, bytes result);
 
     /// @notice Initializes the rollup.
     /// @param _addressManager The {AddressManager} address.
@@ -69,9 +69,9 @@ contract Gwyneth {
                     require(success == true, "call to extension oracle failed");
                 }
 
-                //DelegateContract.Call[] memory calls = new DelegateContract.Call[](0);
-                //DelegateContract(payable(_tx.addr)).execute(calls);
-                (bool success, bytes memory result) = _tx.addr.call{value: call.value}(call.data);
+                (bool success, bytes memory result) = payable(_tx.addr).call{value: call.value}(call.data);
+                emit Executed(_tx.addr, call.value, call.data, success, result);
+
                 if (!success) {
                     errorOut(result);
                 }

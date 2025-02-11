@@ -21,25 +21,26 @@ contract ExtensionOracle {
 
     function _returnData() internal {
         if (msg.sender == gwyneth) {
-            // returndata = abi.decode(msg.data, (GwynethData.ReturnData[]));
+            returndata = abi.decode(msg.data, (GwynethData.ReturnData[]));
         } else {
             //require(returndataCounter < returndata.length, "invalid call pattern");
 
-            // if (returndataCounter >= returndata.length) {
-            //     return;
-            // }
+            // Allow forge simulation to work
+            if (returndataCounter >= returndata.length) {
+                return;
+            }
 
-            // GwynethData.ReturnData memory returnData = returndata[returndataCounter++];
-            // bytes memory data = returnData.data;
-            // if (returnData.isRevert) {
-            //     assembly {
-            //         revert(add(data, 32), mload(data))
-            //     }
-            // } else {
-            //     assembly {
-            //         return(add(data, 32), mload(data))
-            //     }
-            // }
+            GwynethData.ReturnData memory returnData = returndata[returndataCounter++];
+            bytes memory data = returnData.data;
+            if (returnData.isRevert) {
+                assembly {
+                    revert(add(data, 32), mload(data))
+                }
+            } else {
+                assembly {
+                    return(add(data, 32), mload(data))
+                }
+            }
         }
     }
 }
