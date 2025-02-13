@@ -60,24 +60,12 @@ contract Gwyneth {
         // Apply L1 state updates
         for (uint i = 0; i < _block.l1Block.transactions.length; i++) {
             GwynethData.Transaction calldata _tx = _block.l1Block.transactions[i];
-            for (uint j = 0; j < _tx.calls.length; j++) {
-                GwynethData.Call calldata call = _tx.calls[j];
 
-                // Set return data
-                if (call.returnData.length > 0) {
-                    (bool success, bytes memory result) = address(extensionOracle).call(abi.encode(call.returnData));
-                    require(success == true, "call to extension oracle failed");
-                }
+            (bool success, bytes memory result) = payable(_tx.addr).call{value: _tx.value}(_tx.data);
+            emit Executed(_tx.addr, _tx.value, _tx.data, success, result);
 
-                (bool success, bytes memory result) = payable(_tx.addr).call{value: call.value}(call.data);
-                emit Executed(_tx.addr, call.value, call.data, success, result);
-
-                if (!success) {
-                    errorOut(result);
-                }
-            }
-            if (_tx.slots.length > 0) {
-                GwynethContract(_tx.addr).applyStateDelta(_tx.slots);
+            if (!success) {
+                errorOut(result);
             }
         }
 

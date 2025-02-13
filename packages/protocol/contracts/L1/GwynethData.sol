@@ -35,14 +35,8 @@ library GwynethData {
 
     struct Transaction {
         address addr;
-        Call[] calls;
-        StateDiffStorageSlot[] slots;
-    }
-
-    struct Call {
         bytes data;
         uint256 value;
-        ReturnData[] returnData;
     }
 
     struct StateDiffStorageSlot {

@@ -32,7 +32,7 @@ contract XTransfer is Script {
 
         vm.startBroadcast(ALICE_PK);
 
-        // Deposit 999 tokens to L2A (chainId: 167010)
+        // Deposit 999 tokens to L2A (L2 -> L1 -> L2)
         xERC20(TOKEN_ADDRESS).xTransfer(160010, 167010, ALICE, 999);
 
         // Transfer 666 tokens to Bob on L2B (chainId: 167011)

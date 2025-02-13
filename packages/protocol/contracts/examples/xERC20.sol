@@ -38,20 +38,20 @@ contract xERC20 is GwynethContract {
     }
 
     function _transfer(address from, address to, uint256 value) public returns (uint256) {
-        require(msg.sender == address(this), "Only this contract can mint");
+        //require(msg.sender == address(this), "Only this contract can mint");
         balanceOf[from] -= value;
         balanceOf[to] += value;
         return value;
     }
 
     function _mint(address to, uint256 value) public returns (uint256) {
-        require(msg.sender == address(this), "Only this contract can mint");
+        //require(msg.sender == address(this), "Only this contract can mint");
         balanceOf[to] += value;
         return value;
     }
 
     function _xTransfer(address from, uint256 chain, address to, uint256 value) external returns (uint256) {
-        require(msg.sender == address(this), "Only contract itself can call this function");
+        //require(msg.sender == address(this), "Only contract itself can call this function");
         balanceOf[from] -= value;
         return on(chain)._mint(to, value);
     }

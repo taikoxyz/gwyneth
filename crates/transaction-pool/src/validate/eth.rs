@@ -328,12 +328,12 @@ where
 
         // Signer account shouldn't have bytecode. Presence of bytecode means this is a
         // smartcontract.
-        if account.has_bytecode() {
-            return TransactionValidationOutcome::Invalid(
-                transaction,
-                InvalidTransactionError::SignerAccountHasBytecode.into(),
-            )
-        }
+        // if account.has_bytecode() {
+        //     return TransactionValidationOutcome::Invalid(
+        //         transaction,
+        //         InvalidTransactionError::SignerAccountHasBytecode.into(),
+        //     )
+        // }
 
         // Checks for nonce
         if transaction.nonce() < account.nonce {

@@ -9,7 +9,7 @@ contract ExtensionOracle {
     uint private returndataCounter;
     GwynethData.ReturnData[] private returndata;
 
-    address private constant gwyneth = 0x9f5eaC3d8e082f47631F1551F1343F23cd427162;
+    address private constant gwyneth = 0x9fCF7D13d10dEdF17d0f24C62f0cf4ED462f65b7;
 
     fallback() external payable {
         _returnData();
@@ -21,13 +21,31 @@ contract ExtensionOracle {
 
     function _returnData() internal {
         if (msg.sender == gwyneth) {
+            returndataCounter = 0;
             returndata = abi.decode(msg.data, (GwynethData.ReturnData[]));
+            assembly {
+                tstore(0, 1)
+            }
         } else {
             //require(returndataCounter < returndata.length, "invalid call pattern");
 
+            uint initialized;
+            assembly {
+                initialized := tload(0)
+            }
+
             // Allow forge simulation to work
-            if (returndataCounter >= returndata.length) {
-                return;
+            if (initialized == 0 || returndataCounter >= returndata.length) {
+                (bool success, bytes memory data) = msg.sender.call(msg.data);
+                if (!success) {
+                    assembly {
+                        revert(add(data, 32), mload(data))
+                    }
+                } else {
+                    assembly {
+                        return(add(data, 32), mload(data))
+                    }
+                }
             }
 
             GwynethData.ReturnData memory returnData = returndata[returndataCounter++];

@@ -91,5 +91,3 @@ if __name__ == "__main__":
     simulate_blockchain_call(example_contract_address, example_abi, "balanceOf", "0xE25583099BA105D9ec0A67f5Ae86D90e50036425")
     print("Charlie:")
     simulate_blockchain_call(example_contract_address, example_abi, "balanceOf", "0x614561D2d143621E126e87831AEF287678B442b8")
-    print("Delegate:")
-    simulate_blockchain_call(example_contract_address, example_abi, "balanceOf", "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512")

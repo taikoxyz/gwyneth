@@ -350,6 +350,7 @@ pub trait Call: LoadState + SpawnBlocking {
         EthApiError: From<DB::Error>,
     {
         let mut evm = self.evm_config().evm_with_env(db, env);
+        evm.context.evm.env.cfg.xchain = true;
         let res = evm.transact().map_err(Self::Error::from_evm_err)?;
         let (_, env) = evm.into_db_and_env_with_handler_cfg();
         Ok((res, env))
@@ -599,6 +600,7 @@ pub trait Call: LoadState + SpawnBlocking {
             .unwrap_or(block_env_gas_limit);
 
         // Configure the evm env
+        cfg.xchain = true;
         let mut env = self.build_call_evm_env(cfg, block, request)?;
         // Brecht
         //let boxed: Box<dyn StateProvider> = Box::new(StateProviderDatabase::new(state));

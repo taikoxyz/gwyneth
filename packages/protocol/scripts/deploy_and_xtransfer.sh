@@ -115,9 +115,9 @@ else
 fi
 
 
-echo -e "${GREEN}Deploying to L1...${NC}"
-# Capture the forge script output
-forge script --rpc-url http://127.0.0.1:32002 scripts/DeployDelegate.s.sol -vvvv --broadcast --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --legacy
+# echo -e "${GREEN}Deploying to L1...${NC}"
+# # Capture the forge script output
+# forge script --rpc-url http://127.0.0.1:32002 scripts/DeployDelegate.s.sol -vvvv --broadcast --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --legacy
 
 # if [ $? -eq 0 ]; then
 #     # Check if contract is deployed on L1
@@ -137,11 +137,8 @@ forge script --rpc-url http://127.0.0.1:32002 scripts/DeployDelegate.s.sol -vvvv
 echo -e "${GREEN}Executing xDeposit...${NC}"
 forge script scripts/xDeposit.s.sol --rpc-url http://127.0.0.1:32002 -vvvv --broadcast --private-key 0x53321db7c1e331d93a11a41d16f004d7ff63972ec8ec7c25db329728ceeb1710 --legacy
 
-echo -e "${GREEN}Executing xDeposit2...${NC}"
-forge script scripts/xDeposit2.s.sol --rpc-url http://127.0.0.1:32002 -vvvv --broadcast --private-key 0x53321db7c1e331d93a11a41d16f004d7ff63972ec8ec7c25db329728ceeb1710 --legacy
-
 echo -e "${GREEN}Executing xTransfer...${NC}"
-# forge script scripts/XTransfer.s.sol --rpc-url http://127.0.0.1:32005 -vvvv --broadcast --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --legacy --gas-estimate-multiplier 500
+forge script scripts/XTransfer.s.sol --rpc-url http://127.0.0.1:32005 -vvvv --broadcast --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --legacy --gas-estimate-multiplier 500
 
 echo -e "${GREEN}Executing xWithdraw...${NC}"
-# forge script scripts/XWithdraw.s.sol --rpc-url http://127.0.0.1:32006 -vvvv --broadcast --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --legacy --gas-estimate-multiplier 500
+forge script scripts/XWithdraw.s.sol --rpc-url http://127.0.0.1:32006 -vvvv --broadcast --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --legacy --gas-estimate-multiplier 500

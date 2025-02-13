@@ -65,10 +65,8 @@ library EVM {
     {
         // Call the custom precompile
         bytes memory input = abi.encodePacked(version, uint64(chainID), sandbox, txOrigin, msgSender, blockHash, proof);
-        (bool success, ) = xCallOptionsAddress.staticcall(input);
-        //return success && bytes4(result) == xCallOptionsMagic;
-        require(success);
-        return true;
+        (bool success, bytes memory result) = xCallOptionsAddress.staticcall(input);
+        return success && bytes4(result) == xCallOptionsMagic;
     }
 
 
@@ -86,8 +84,12 @@ library EVM {
         view
         returns (address)
     {
+        (bool success, bytes memory result) = address(0x09).staticcall{gas: 1000}(new bytes(0));
+        bool is_simulation = !success || result.length > 1;
+
         bool xCallOptionsAvailable = xCallOptions(chainID, false);
-        if (xCallOptionsAvailable) {
+
+        if (xCallOptionsAvailable || is_simulation) {
             return addr;
         } else {
             return extensionOracle;
