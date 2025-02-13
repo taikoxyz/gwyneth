@@ -9119,7 +9119,7 @@ dependencies = [
 [[package]]
 name = "revm"
 version = "14.0.1"
-source = "git+https://github.com/taikoxyz/revm.git?branch=v43-gwyneth#25428f64f1d7879f0b688077cf00d8391792b27d"
+source = "git+https://github.com/taikoxyz/revm.git?branch=v43-gwyneth#1dd3e80a8d22d773675f59ddbbf3226af4f8f29f"
 dependencies = [
  "auto_impl",
  "cfg-if",
@@ -9151,7 +9151,7 @@ dependencies = [
 [[package]]
 name = "revm-interpreter"
 version = "10.0.1"
-source = "git+https://github.com/taikoxyz/revm.git?branch=v43-gwyneth#25428f64f1d7879f0b688077cf00d8391792b27d"
+source = "git+https://github.com/taikoxyz/revm.git?branch=v43-gwyneth#1dd3e80a8d22d773675f59ddbbf3226af4f8f29f"
 dependencies = [
  "revm-primitives",
  "serde",
@@ -9160,7 +9160,7 @@ dependencies = [
 [[package]]
 name = "revm-precompile"
 version = "11.0.1"
-source = "git+https://github.com/taikoxyz/revm.git?branch=v43-gwyneth#25428f64f1d7879f0b688077cf00d8391792b27d"
+source = "git+https://github.com/taikoxyz/revm.git?branch=v43-gwyneth#1dd3e80a8d22d773675f59ddbbf3226af4f8f29f"
 dependencies = [
  "aurora-engine-modexp",
  "blst",
@@ -9179,7 +9179,7 @@ dependencies = [
 [[package]]
 name = "revm-primitives"
 version = "9.0.1"
-source = "git+https://github.com/taikoxyz/revm.git?branch=v43-gwyneth#25428f64f1d7879f0b688077cf00d8391792b27d"
+source = "git+https://github.com/taikoxyz/revm.git?branch=v43-gwyneth#1dd3e80a8d22d773675f59ddbbf3226af4f8f29f"
 dependencies = [
  "alloy-eips",
  "alloy-primitives 0.8.14",
