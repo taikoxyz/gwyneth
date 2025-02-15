@@ -55,10 +55,12 @@ dashmap = { workspace = true, features = ["inline"] }
 strum.workspace = true
 
 # test-utils
-once_cell = { workspace = true, optional = true }
+once_cell.workspace = true
 
 # parallel utils
 rayon.workspace = true
+
+notify = "6.1.1"
 
 [dev-dependencies]
 reth-db = { workspace = true, features = ["test-utils"] }
@@ -70,7 +72,7 @@ parking_lot.workspace = true
 tempfile.workspace = true
 assert_matches.workspace = true
 rand.workspace = true
-once_cell.workspace = true
+#once_cell.workspace = true
 eyre.workspace = true
 
 [features]
@@ -81,5 +83,5 @@ test-utils = [
     "reth-nippy-jar/test-utils",
     "reth-trie/test-utils",
     "reth-chain-state/test-utils",
-    "once_cell",
+    #"once_cell",
 ]

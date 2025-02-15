@@ -52,3 +52,5 @@ crates/storage/libmdbx-rs/mdbx-sys/libmdbx/cmake-build-debug
 rustc-ice-*
 
 packages/protocol/broadcast/**
+packages/protocol/logs/**
+packages/protocol/scripts/memory_drainer_logger/logs/**

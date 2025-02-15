@@ -512,7 +512,7 @@ where
     db.merge_transitions(BundleRetention::PlainState);
 
     let execution_outcome = ExecutionOutcome::new(
-        Some(chain_spec.chain.id()),
+        chain_spec.chain.id(),
         db.take_bundle(),
         vec![receipts].into(),
         block_number,
@@ -592,7 +592,7 @@ where
     let sealed_block = block.seal_slow();
     debug!(target: "payload_builder", ?sealed_block, "sealed built block");
 
-    println!("default payload done [{:?}]: {:?}", sealed_block.hash(), sealed_block.state_root);
+    //println!("default payload done [{:?}]: {:?}", sealed_block.hash(), sealed_block.state_root);
 
     let mut payload = EthBuiltPayload::new(attributes.id, sealed_block, total_fees);
 

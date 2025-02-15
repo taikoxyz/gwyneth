@@ -255,9 +255,7 @@ lto = "thin"
 [profile.release]
 opt-level = 1
 lto = "thin"
-debug = "line-tables-only"
-strip = true
-panic = "unwind"
+debug = true
 codegen-units = 8
 
 # Use the `--profile profiling` flag to show symbols in release mode.
@@ -494,6 +492,7 @@ tracing = "0.1.0"
 tracing-appender = "0.2"
 url = "2.3"
 zstd = "0.13"
+bincode = "1.3"
 
 # metrics
 metrics = "0.23.0"
@@ -563,11 +562,18 @@ proptest-derive = "0.5"
 serial_test = "3"
 similar-asserts = "1.5.0"
 tempfile = "3.8"
-test-fuzz = "5" 
+test-fuzz = "5"
 
 [patch.crates-io]
 revm = { git = "https://github.com/taikoxyz/revm.git", branch = "v43-gwyneth" }
 revm-primitives = { git = "https://github.com/taikoxyz/revm.git", branch = "v43-gwyneth" }
 revm-interpreter = { git = "https://github.com/taikoxyz/revm.git", branch = "v43-gwyneth" }
 revm-precompile = { git = "https://github.com/taikoxyz/revm.git", branch = "v43-gwyneth" }
-revm-inspectors = { git = "https://github.com/taikoxyz/revm-inspectors.git", branch = "main-rbuilder" }
+
+#revm = { path = "../../revm-gwyneth/revm/crates/revm" }
+#revm-primitives = { path = "../../revm-gwyneth/revm/crates/primitives" }
+#revm-interpreter = { path = "../../revm-gwyneth/revm/crates/interpreter" }
+#revm-precompile = { path = "../../revm-gwyneth/revm/crates/precompile" }
+
+revm-inspectors = { git = "https://github.com/taikoxyz/revm-inspectors.git", branch = "v0.7.4-gwyneth" }
+#revm-inspectors = { path = "../../revm-inspector-gwyneth/revm-inspectors"}

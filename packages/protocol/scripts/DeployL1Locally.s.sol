@@ -3,11 +3,12 @@ pragma solidity 0.8.24;
 
 import "@openzeppelin/contracts/utils/Strings.sol";
 
-import "../contracts/L1/TaikoL1.sol";
+import "../contracts/L1/Gwyneth.sol";
+import "../contracts/L1/ExtensionOracle.sol";
 import "../contracts/L1/ChainProver.sol";
 import "../contracts/L1/VerifierRegistry.sol";
 import "../contracts/tko/TaikoToken.sol";
-import "../contracts/L1/provers/GuardianProver.sol";
+//import "../contracts/L1/provers/GuardianProver.sol";
 // import "../contracts/L1/tiers/DevnetTierProvider.sol";
 // import "../contracts/L1/tiers/TierProviderV2.sol";
 // import "../contracts/bridge/Bridge.sol";
@@ -22,7 +23,7 @@ import "../contracts/L1/provers/GuardianProver.sol";
 // import "../contracts/automata-attestation/utils/SigVerifyLib.sol";
 // import "../contracts/automata-attestation/lib/PEMCertChainLib.sol";
 //import "../contracts/L1/verifiers/SgxVerifier.sol";
-import "../contracts/L1/verifiers/MockSgxVerifier.sol"; // Avoid proof verification for now!
+//import "../contracts/L1/verifiers/MockSgxVerifier.sol"; // Avoid proof verification for now!
 // import "../contracts/team/proving/ProverSet.sol";
 // import "../test/common/erc20/FreeMintERC20.sol";
 // import "../test/common/erc20/MayFailFreeMintERC20.sol";
@@ -62,6 +63,11 @@ contract DeployL1Locally is DeployCapability {
         // addressNotNull(vm.envAddress("L2_SIGNAL_SERVICE"), "L2_SIGNAL_SERVICE");
         // addressNotNull(vm.envAddress("CONTRACT_OWNER"), "CONTRACT_OWNER");
 
+        // Sending 10 ETH to Alice
+        address payable admin = payable(0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266);
+        (bool success, ) = admin.call{value: 10 ether}("");
+        require(success, "Failed to send Ether");
+
         require(vm.envBytes32("L2_GENESIS_HASH") != 0, "L2_GENESIS_HASH");
         address contractOwner = MAINNET_CONTRACT_OWNER;
 
@@ -81,11 +87,14 @@ contract DeployL1Locally is DeployCapability {
     //     addressNotNull(signalServiceAddr, "signalServiceAddr");
     //     SignalService signalService = SignalService(signalServiceAddr);
 
-        address taikoL1Addr = AddressManager(rollupAddressManager).getAddress(
+        address gwynethAddr = AddressManager(rollupAddressManager).getAddress(
             uint64(block.chainid), "taiko"
         );
-        addressNotNull(taikoL1Addr, "taikoL1Addr");
-        TaikoL1 taikoL1 = TaikoL1(payable(taikoL1Addr));
+        addressNotNull(gwynethAddr, "taikoL1Addr");
+        Gwyneth gwyneth = Gwyneth(payable(gwynethAddr));
+
+        ExtensionOracle extensionOracle = new ExtensionOracle();
+        console2.log("extensionOracle: ", address(extensionOracle));
 
         // if (vm.envAddress("SHARED_ADDRESS_MANAGER") == address(0)) {
         //     SignalService(signalServiceAddr).authorize(taikoL1Addr, true);
@@ -252,11 +261,11 @@ contract DeployL1Locally is DeployCapability {
         // copyRegister(rollupAddressManager, _sharedAddressManager, "signal_service");
         // copyRegister(rollupAddressManager, _sharedAddressManager, "bridge");
 
-        deployProxy({
+        address gwyneth = deployProxy({
             name: "taiko",
-            impl: address(new TaikoL1()),
+            impl: address(new Gwyneth()),
             data: abi.encodeCall(
-                TaikoL1.init,
+                Gwyneth.init,
                 (
                     owner,
                     rollupAddressManager,
@@ -265,6 +274,7 @@ contract DeployL1Locally is DeployCapability {
             ),
             registerTo: rollupAddressManager
         });
+        console2.log("gwyneth: ", address(gwyneth));
 
         /* Deploy ChainProver */
         deployProxy({
@@ -275,37 +285,37 @@ contract DeployL1Locally is DeployCapability {
         });
 
         /* Deploy MockSGXVerifier 3 times for now, so that we can call verifyProof without modifications of the protocol code. Later obv. shall be replaced with real verifiers. */
-        address verifier1 = deployProxy({
-            name: "tier_sgx1",
-            impl: address(new MockSgxVerifier()),
-            data: abi.encodeCall(MockSgxVerifier.init, (MAINNET_CONTRACT_OWNER, rollupAddressManager)),
-            registerTo: rollupAddressManager
-        });
-        address verifier2 = deployProxy({
-            name: "tier_sgx2",
-            impl: address(new MockSgxVerifier()),
-            data: abi.encodeCall(MockSgxVerifier.init, (MAINNET_CONTRACT_OWNER, rollupAddressManager)),
-            registerTo: rollupAddressManager
-        });
-        address verifier3 = deployProxy({
-            name: "tier_sgx3",
-            impl: address(new MockSgxVerifier()),
-            data: abi.encodeCall(MockSgxVerifier.init, (MAINNET_CONTRACT_OWNER, rollupAddressManager)),
-            registerTo: rollupAddressManager
-        });
+        // address verifier1 = deployProxy({
+        //     name: "tier_sgx1",
+        //     impl: address(new MockSgxVerifier()),
+        //     data: abi.encodeCall(MockSgxVerifier.init, (MAINNET_CONTRACT_OWNER, rollupAddressManager)),
+        //     registerTo: rollupAddressManager
+        // });
+        // address verifier2 = deployProxy({
+        //     name: "tier_sgx2",
+        //     impl: address(new MockSgxVerifier()),
+        //     data: abi.encodeCall(MockSgxVerifier.init, (MAINNET_CONTRACT_OWNER, rollupAddressManager)),
+        //     registerTo: rollupAddressManager
+        // });
+        // address verifier3 = deployProxy({
+        //     name: "tier_sgx3",
+        //     impl: address(new MockSgxVerifier()),
+        //     data: abi.encodeCall(MockSgxVerifier.init, (MAINNET_CONTRACT_OWNER, rollupAddressManager)),
+        //     registerTo: rollupAddressManager
+        // });
 
-        /* Deploy VerifierRegistry */
-        address vieriferRegistry = deployProxy({
-                name: "verifier_registry",
-                impl: address(new VerifierRegistry()),
-                data: abi.encodeCall(VerifierRegistry.init, (MAINNET_CONTRACT_OWNER, rollupAddressManager)),
-                registerTo: rollupAddressManager
-            });
+        // /* Deploy VerifierRegistry */
+        // address vieriferRegistry = deployProxy({
+        //         name: "verifier_registry",
+        //         impl: address(new VerifierRegistry()),
+        //         data: abi.encodeCall(VerifierRegistry.init, (MAINNET_CONTRACT_OWNER, rollupAddressManager)),
+        //         registerTo: rollupAddressManager
+        //     });
 
-        // Add those 3 to verifier registry
-        VerifierRegistry(vieriferRegistry).addVerifier(verifier1, "sgx1");
-        VerifierRegistry(vieriferRegistry).addVerifier(verifier2, "sgx2");
-        VerifierRegistry(vieriferRegistry).addVerifier(verifier3, "sgx3");
+        // // Add those 3 to verifier registry
+        // VerifierRegistry(vieriferRegistry).addVerifier(verifier1, "sgx1");
+        // VerifierRegistry(vieriferRegistry).addVerifier(verifier2, "sgx2");
+        // VerifierRegistry(vieriferRegistry).addVerifier(verifier3, "sgx3");
 
         // Leave out guardians "tier" for now.
         // address guardianProverImpl = address(new GuardianProver());

@@ -14,6 +14,12 @@
 
 /// Various provider traits.
 mod traits;
+use std::{collections::HashMap, sync::{Arc, LazyLock}};
+
+use providers::BlockchainProvider;
+use reth_db::{test_utils::TempDatabase, DatabaseEnv};
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
 pub use traits::*;
 
 /// Provider trait implementations.
@@ -61,3 +67,19 @@ pub(crate) fn to_range<R: std::ops::RangeBounds<u64>>(bounds: R) -> std::ops::Ra
 
     start..end
 }
+
+/// All chain providers being synced in this node
+// pub static NODES: LazyLock<Mutex<HashMap<u64, ProviderFactory<DatabaseEnv>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+// pub static NODES: LazyLock<Mutex<HashMap<u64, ProviderFactory<BlockchainProvider<Arc<TempDatabase<DatabaseEnv>>>>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+
+pub static NODES: LazyLock<Mutex<HashMap<u64, BlockchainProvider<Arc<DatabaseEnv>>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+//pub static NODES: LazyLock<Mutex<HashMap<u64, ProviderFactory<Arc<DatabaseEnv>>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+// pub static NODES: LazyLock<Mutex<HashMap<u64, ProviderFactory<BlockchainProvider<Arc<TempDatabase<DatabaseEnv>>>>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+pub static mut GWYNETH_SYNCED_L1_BLOCK_IDX: u64 = 0;
+pub static GWYNETH_SYNCED_L2_BLOCK_IDX: Lazy<Mutex<HashMap<u64, u64>>> = Lazy::new(|| {
+    let map = HashMap::new();
+    Mutex::new(map)
+});

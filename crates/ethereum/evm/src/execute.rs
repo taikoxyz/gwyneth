@@ -170,7 +170,7 @@ where
         let mut cumulative_gas_used = 0;
         let mut receipts = Vec::with_capacity(block.body.len());
         for (sender, transaction) in block.transactions_with_sender() {
-            println!("Executing transaction from {:?}: {:?}", sender, transaction.chain_id());
+            //println!("Executing transaction from {:?}: {:?}", sender, transaction.chain_id());
             // The sum of the transaction’s gas limit, Tg, and the gas utilized in this block prior,
             // must be no greater than the block’s gasLimit.
             let block_available_gas = block.header.gas_limit - cumulative_gas_used;
@@ -452,7 +452,7 @@ where
 
     fn finalize(mut self) -> Self::Output {
         ExecutionOutcome::new(
-            Some(self.executor.executor.chain_spec.chain().id()),
+            self.executor.executor.chain_spec.chain().id(),
             self.executor.state.take_bundle(),
             self.batch_record.take_receipts(),
             self.batch_record.first_block().unwrap_or_default(),

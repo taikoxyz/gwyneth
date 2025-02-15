@@ -2,7 +2,6 @@
 pragma solidity 0.8.24;
 
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
-import "../TaikoL1.sol";
 import "../../common/EssentialContract.sol";
 import "../../automata-attestation/interfaces/IAttestation.sol";
 import "../../automata-attestation/lib/QuoteV3Auth/V3Struct.sol";
@@ -152,7 +151,7 @@ contract SgxVerifier is EssentialContract, IVerifier {
         address newInstance = address(bytes20(proof[4:24]));
         bytes memory signature = proof[24:];
 
-        uint64 chainId = TaikoL1(resolve("taiko", false)).getConfig().chainId;
+        uint64 chainId = uint64(block.chainid);
 
         address oldInstance = ECDSA.recover(
             LibPublicInput.hashPublicInputs(
