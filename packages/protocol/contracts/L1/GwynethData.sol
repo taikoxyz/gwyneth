@@ -39,6 +39,11 @@ library GwynethData {
         uint256 value;
     }
 
+    struct StateDiffAccount {
+        StateDiffStorageSlot[] storageSlots;
+        uint balanceChange;
+    }
+
     struct StateDiffStorageSlot {
         bytes32 key;
         bytes32 value;

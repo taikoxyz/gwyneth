@@ -85,4 +85,7 @@ contract Gwyneth {
             revert(add(result, 32), mload(result))
         }
     }
+
+    // This contract stores all ETH on L2
+    receive() external payable {}
 }

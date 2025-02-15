@@ -20,18 +20,18 @@ contract XTransfer is Script {
     function setUp() public {}
 
     function run() public {
-        address alice = vm.addr(ALICE_PK);
-        address charlie = vm.addr(CHARLIE_PK);
-
-        console.log("\n=== Before Transfer ===");
         vm.startBroadcast(ALICE_PK);
 
-        // L1 -> L2
+        (bool success, ) = ALICE.call{value: 0.01 ether}("");
+        require(success, "Failed to send Ether");
+
+        // L1 -> L2 (ETH)
+        xERC20(TOKEN_ADDRESS).sendETH{value: 4 ether}(167011, payable(ALICE));
+
+        // L1 -> L2 (ERC20)
         xERC20(TOKEN_ADDRESS).xTransfer(167010, BOB, 333);
         xERC20(TOKEN_ADDRESS).xTransfer(167011, CHARLIE, 666);
 
         vm.stopBroadcast();
-
-        console.log("\n=== After Transfer ===");
     }
 }

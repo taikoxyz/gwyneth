@@ -20,6 +20,11 @@ def simulate_blockchain_call(contract_address, abi, function_name, *args):
     contract_a_function = getattr(contract_a.functions, function_name)(*args)
     contract_b_function = getattr(contract_b.functions, function_name)(*args)
 
+    # ETH balance
+    print(f"ETH L1: {web3_l1.eth.get_balance(*args) / 10**18}")
+    print(f"ETH L2A: {web3_l2a.eth.get_balance(*args) / 10**18}")
+    print(f"ETH L2B: {web3_l2b.eth.get_balance(*args) / 10**18}")
+
     # Simulate the call
     try:
         response = contract_function.call()
@@ -91,3 +96,7 @@ if __name__ == "__main__":
     simulate_blockchain_call(example_contract_address, example_abi, "balanceOf", "0xE25583099BA105D9ec0A67f5Ae86D90e50036425")
     print("Charlie:")
     simulate_blockchain_call(example_contract_address, example_abi, "balanceOf", "0x614561D2d143621E126e87831AEF287678B442b8")
+    print("ExtensionOracle:")
+    simulate_blockchain_call(example_contract_address, example_abi, "balanceOf", "0x1ADB9959EB142bE128E6dfEcc8D571f07cd66DeE")
+    print("Gwyneth:")
+    simulate_blockchain_call(example_contract_address, example_abi, "balanceOf", "0x9fCF7D13d10dEdF17d0f24C62f0cf4ED462f65b7")
