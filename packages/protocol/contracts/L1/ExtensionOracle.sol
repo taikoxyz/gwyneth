@@ -9,7 +9,7 @@ contract ExtensionOracle {
     uint private returndataCounter;
     GwynethData.ReturnData[] private returndata;
 
-    address private constant gwyneth = 0x9fCF7D13d10dEdF17d0f24C62f0cf4ED462f65b7;
+    address payable private constant gwyneth = payable(0x9fCF7D13d10dEdF17d0f24C62f0cf4ED462f65b7);
 
     fallback() external payable {
         _returnData();
@@ -46,6 +46,12 @@ contract ExtensionOracle {
                         return(add(data, 32), mload(data))
                     }
                 }
+            }
+
+            // Collect all ETH in the Gwyneth contract
+            if (msg.value > 0) {
+                (bool success, ) = gwyneth.call{value: msg.value }("");
+                require(success, "Failed to send Ether");
             }
 
             GwynethData.ReturnData memory returnData = returndata[returndataCounter++];

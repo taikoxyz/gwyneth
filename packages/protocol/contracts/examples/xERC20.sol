@@ -12,6 +12,7 @@ contract xERC20 is GwynethContract {
     event Approval(address indexed owner, address indexed spender, uint256 value);
 
     using EVM for address;
+    using EVM for address payable;
 
     function ChainAddress(uint256 chainId, xERC20 contractAddr) internal view returns (xERC20) {
         return xERC20(address(contractAddr).onChain(chainId));
@@ -73,15 +74,14 @@ contract xERC20 is GwynethContract {
     }
 
     function _approve(address owner, address spender, uint256 value) public returns (uint256) {
-        require(msg.sender == address(this), "Only contract itself can call this function");
+        // require(msg.sender == address(this), "Only contract itself can call this function");
         allowance[owner][spender] = value;
         emit Approval(owner, spender, value);
         return value;
     }
 
     function xApprove(uint256 chain, address spender, uint256 value) public returns (uint256) {
-        EVM.xCallOptions(chain);
-        return this._approve(msg.sender, spender, value);
+        return on(chain)._approve(msg.sender, spender, value);
     }
 
     function transferFrom(address from, address to, uint256 value) public returns (uint256) {
@@ -96,5 +96,10 @@ contract xERC20 is GwynethContract {
         }
         emit Transfer(from, to, value);
         return value;
+    }
+
+    function sendETH(uint256 chain, address payable to) external payable {
+        (bool success, ) = to.onChain(chain).call{value: msg.value}("");
+        require(success);
     }
 }
