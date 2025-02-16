@@ -457,17 +457,18 @@ where
         header: &SealedHeader,
         attrs: &mut Option<EngineT::PayloadAttributes>,
     ) -> bool {
+        println!("Brecht: on_head_already_canonical: {:?}", self.blockchain.chain_spec().chain.id());
         // On Optimism, the proposers are allowed to reorg their own chain at will.
-        #[cfg(feature = "optimism")]
-        if self.blockchain.chain_spec().is_optimism() {
+        //#[cfg(feature = "optimism")]
+        //if self.blockchain.chain_spec().is_optimism() {
             debug!(
                 target: "consensus::engine",
                 fcu_head_num=?header.number,
                 current_head_num=?head.number,
                 "[Optimism] Allowing beacon reorg to old head"
             );
-            return true
-        }
+            return true;
+        //}
 
         // 2. Client software MAY skip an update of the forkchoice state and MUST NOT begin a
         //    payload build process if `forkchoiceState.headBlockHash` references a `VALID` ancestor
@@ -1599,10 +1600,12 @@ where
         &mut self,
         action: BlockchainTreeAction<EngineT>,
     ) -> RethResult<EngineEventOutcome> {
+        println!("on_blockchain_tree_action");
         match action {
             BlockchainTreeAction::MakeForkchoiceHeadCanonical { state, attrs, tx } => {
                 let start = Instant::now();
                 // Brecht: reorg
+                println!("on_blockchain_tree_action MakeForkchoiceHeadCanonical");
                 let result = self.blockchain.make_canonical(state.head_block_hash);
                 let elapsed = self.record_make_canonical_latency(start, &result);
                 match self
@@ -1859,6 +1862,7 @@ where
                 if let Poll::Ready(Some(msg)) = this.engine_message_stream.poll_next_unpin(cx) {
                     match msg {
                         BeaconEngineMessage::ForkchoiceUpdated { state, payload_attrs, tx } => {
+                            println!("Brecht: BeaconEngineMessage::ForkchoiceUpdated");
                             this.on_forkchoice_updated(state, payload_attrs, tx);
                         }
                         BeaconEngineMessage::NewPayload { payload, cancun_fields, tx } => {

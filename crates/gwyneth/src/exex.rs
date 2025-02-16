@@ -92,9 +92,7 @@ pub struct Rollup<Node: reth_node_api::FullNodeComponents> {
     engine_apis: Vec<EngineApiContext<GwynethEngineTypes>>,
     num_l2_blocks: u64,
     l1_l2_ring_buffers: Vec<VecDeque<L1L2Mapping>>,
-    block_proposed_counter: usize,
     l2_genesis_l1_block: u64,
-    //payloads: Vec<EthBuiltPayload>,
 }
 
 impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
@@ -121,9 +119,7 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
             engine_apis,
             num_l2_blocks: 0,
             l1_l2_ring_buffers,
-            block_proposed_counter: 0,
             l2_genesis_l1_block: 0,
-            //payloads: Vec::new(),
         })
     }
 
@@ -361,10 +357,7 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                 l2_block_indices.insert(self.nodes[node_idx].chain_spec().chain().id(), payload.block().number);
 
 
-
                 // reorg stuff
-
-                self.block_proposed_counter += 1; // Increment the counter
 
                 // Set l2_genesis_l1_block if this is the first L2 block
                 if self.l2_genesis_l1_block == 0 {
@@ -372,7 +365,11 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                 }
 
                 // // Determine the finalized block hash
-                // let finalized_hash: revm::primitives::FixedBytes<32> = self.get_finalized_hash(l1_block_number, node_idx);
+                // let finalized_hash = self.get_finalized_hash(l1_block_number, node_idx);
+                // Determine the finalized block hash
+                //let finalized_hash = self.get_finalized_hash(l1_block_number, node_idx);
+                // Convert l2_block_number to u64 if necessary
+                //let l2_block_u64 = payload.block().number;
 
                 // println!("finalized hash: {}", finalized_hash);
                 // println!("Block number: {}", payload.block().number);
@@ -411,7 +408,7 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
         // Update forkchoice
         if let Some(block_hash) = l2_block_hash {
             self.engine_apis[node_idx].update_forkchoice(block_hash, block_hash).await?;
-             // Remove all mappings newer than the reverted block
+            // Remove all mappings newer than the reverted block
             self.l1_l2_ring_buffers[node_idx].retain(|mapping| mapping.l1_block <= oldest_l1_block);
         }
 

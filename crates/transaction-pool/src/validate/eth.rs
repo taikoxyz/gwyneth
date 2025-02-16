@@ -336,12 +336,12 @@ where
         // }
 
         // Checks for nonce
-        if transaction.nonce() < account.nonce {
-            return TransactionValidationOutcome::Invalid(
-                transaction,
-                InvalidTransactionError::NonceNotConsistent.into(),
-            )
-        }
+        // if transaction.nonce() < account.nonce {
+        //     return TransactionValidationOutcome::Invalid(
+        //         transaction,
+        //         InvalidTransactionError::NonceNotConsistent.into(),
+        //     )
+        // }
 
         let cost = transaction.cost();
 
