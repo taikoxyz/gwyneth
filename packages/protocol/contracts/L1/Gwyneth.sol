@@ -6,12 +6,9 @@
 
 pragma solidity ^0.8.24;
 
-import "./preconfs/ISequencerRegistry.sol";
 import "../gwyneth/GwynethContract.sol";
 import "./GwynethData.sol";
 import "./ExtensionOracle.sol";
-
-import "../examples/DelegateContract.sol";
 
 /// @title Gwyneth
 contract Gwyneth {

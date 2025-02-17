@@ -6,17 +6,6 @@ import "forge-std/console2.sol";
 
 import "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
-import "../contracts/thirdparty/LibFixedPointMath.sol";
-
-import "../contracts/bridge/Bridge.sol";
-import "../contracts/signal/SignalService.sol";
-import "../contracts/tokenvault/BridgedERC20.sol";
-import "../contracts/tokenvault/BridgedERC721.sol";
-import "../contracts/tokenvault/BridgedERC1155.sol";
-import "../contracts/tokenvault/ERC20Vault.sol";
-import "../contracts/tokenvault/ERC721Vault.sol";
-import "../contracts/tokenvault/ERC1155Vault.sol";
-
 import "../contracts/tko/TaikoToken.sol";
 import "../contracts/L1/VerifierRegistry.sol";
 import "../contracts/L1/ChainProver.sol";
@@ -36,7 +25,6 @@ import "../contracts/L1/provers/GuardianProver.sol";*/
 import "../contracts/test/erc20/FreeMintERC20.sol";
 
 import "./DeployCapability.sol";
-import "./HelperContracts.sol";
 
 abstract contract TaikoTest is Test, DeployCapability {
     uint256 private _seed = 0x12345678;
