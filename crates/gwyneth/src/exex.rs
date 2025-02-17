@@ -90,15 +90,14 @@ pub struct Rollup<Node: reth_node_api::FullNodeComponents> {
     ctx: ExExContext<Node>,
     nodes: Vec<GwynethFullNode>,
     engine_apis: Vec<EngineApiContext<GwynethEngineTypes>>,
-    num_l2_blocks: u64,
-    l1_l2_ring_buffers: Vec<VecDeque<L1L2Mapping>>,
-    l2_genesis_l1_block: u64,
+    l1_to_l2: HashMap<u64, HashMap<u64, (u64, B256)>>,
+    l1_finalized_block: u64,
 }
 
 impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
     pub async fn new(ctx: ExExContext<Node>, nodes: Vec<GwynethFullNode>) -> eyre::Result<Self> {
         let mut engine_apis = Vec::new();
-        let mut l1_l2_ring_buffers = Vec::new();
+        let mut l2_block_info = HashMap::new();
         for node in &nodes {
             let engine_api = EngineApiContext {
                 engine_api_client: node.auth_server_handle().http_client(),
@@ -107,19 +106,24 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
             };
             engine_apis.push(engine_api);
 
-            let mut l2_block_indices = GWYNETH_SYNCED_L2_BLOCK_IDX.lock().unwrap();
-            l2_block_indices.insert(node.chain_spec().chain().id(), 0);
+            let chain_id = node.chain_spec().chain().id();
 
-            l1_l2_ring_buffers.push(VecDeque::with_capacity(RING_BUFFER_SIZE));
+            let mut l2_block_indices = GWYNETH_SYNCED_L2_BLOCK_IDX.lock().unwrap();
+            l2_block_indices.insert(chain_id, 0);
+
+            l2_block_info.insert(chain_id, (0u64, GENESIS_HASH));
         }
+
+        let l1_finalized_block = ctx.head.number;
+        let mut l1_to_l2 = HashMap::new();
+        l1_to_l2.insert(l1_finalized_block, l2_block_info);
 
         Ok(Self {
             ctx,
             nodes,
             engine_apis,
-            num_l2_blocks: 0,
-            l1_l2_ring_buffers,
-            l2_genesis_l1_block: 0,
+            l1_to_l2,
+            l1_finalized_block,
         })
     }
 
@@ -133,6 +137,16 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
 
             if let Some(committed_chain) = notification.committed_chain() {
                 println!("EXEX called for block {}", committed_chain.tip().number);
+
+                // Copy the previous l1 -> L2 mapping to the current block, which may get overwritten below with new blocks
+                for block in committed_chain.blocks_iter() {
+                    self.l1_to_l2.insert(block.number, self.l1_to_l2.get(&(block.number - 1)).unwrap().clone());
+                }
+                self.l1_finalized_block = committed_chain.tip().number.saturating_sub(FINALIZATION_PERIOD);
+                // prune list
+                self.l1_to_l2.retain(|&l1_block, _| l1_block >= self.l1_finalized_block);
+
+                // Sync nodes
                 for i in 0..self.nodes.len() {
                     self.commit(&committed_chain, i).await?;
                 }
@@ -142,6 +156,8 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                     GWYNETH_SYNCED_L1_BLOCK_IDX = committed_chain.tip().number;
                     println!("Updated L1 sync data: {}", GWYNETH_SYNCED_L1_BLOCK_IDX);
                 }
+
+                println!("l1 to l2: {:?}", self.l1_to_l2);
 
                 self.ctx.events.send(ExExEvent::FinishedHeight(committed_chain.tip().number))?;
             }
@@ -185,7 +201,7 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                 //println!("da: {:?}", da);
 
                 let all_transactions: Vec<TransactionSigned> = decode_transactions(&meta.txList);
-                let node_chain_id = BASE_CHAIN_ID + (node_idx as u64);
+                let node_chain_id = self.get_node_id(node_idx);
 
                 let chain_da = da.chain_das.get(&node_chain_id);
                 if chain_da.is_none() {
@@ -322,18 +338,21 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                     assert_eq!(block_hash, chain_da.block_hash, "unexpected block hash for chain {} block {}", node_chain_id, payload.block().number);
                 }
 
-
-                // Determine the finalized block hash
-                let finalized_hash: revm::primitives::FixedBytes<32> = self.get_finalized_hash(l1_block_number, node_idx);
+                // Determine the finalized block hash for this L2
+                let finalized_hash = self.l1_to_l2.get(&self.l1_finalized_block).unwrap().get(&node_chain_id).unwrap().1;
 
                 // println!("finalized hash: {}", finalized_hash);
                 // println!("Block number: {}", payload.block().number);
-                // println!("parent header: {}", payload.block().parent_hash);
-
-                // let finalized_hash = GENESIS_HASH;
 
                 // trigger forkchoice update via engine api to commit the block to the blockchain
                 self.engine_apis[node_idx].update_forkchoice(finalized_hash, block_hash).await?;
+
+                // if payload.block().number == 2 {
+                //     println!("REVERT");
+                //     let res = self.engine_apis[node_idx].update_forkchoice(finalized_hash, finalized_hash).await?;
+                //     println!("Revert res: {:?}", res);
+                //     continue;
+                // }
 
                 // loop {
                 //     // wait for the block to commit
@@ -353,43 +372,12 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
 
                 println!("[L1 block {}] Done with block {}: {}", block.number, node_chain_id, payload.block().number);
 
+                // For rbuilder syncing
                 let mut l2_block_indices = GWYNETH_SYNCED_L2_BLOCK_IDX.lock().unwrap();
                 l2_block_indices.insert(self.nodes[node_idx].chain_spec().chain().id(), payload.block().number);
 
-
-                // reorg stuff
-
-                // Set l2_genesis_l1_block if this is the first L2 block
-                if self.l2_genesis_l1_block == 0 {
-                    self.l2_genesis_l1_block = l1_block_number;
-                }
-
-                // // Determine the finalized block hash
-                // let finalized_hash = self.get_finalized_hash(l1_block_number, node_idx);
-                // Determine the finalized block hash
-                //let finalized_hash = self.get_finalized_hash(l1_block_number, node_idx);
-                // Convert l2_block_number to u64 if necessary
-                //let l2_block_u64 = payload.block().number;
-
-                // println!("finalized hash: {}", finalized_hash);
-                // println!("Block number: {}", payload.block().number);
-                // println!("parent header: {}", payload.block().parent_hash);
-
-                // let finalized_hash = GENESIS_HASH;
-
-                // // Update the L1-L2 mapping in the ring buffer
-                self.update_l1_l2_ring_buffer(l1_block_number, payload.block().number, block_hash, node_idx);
-                // // trigger forkchoice update via engine api to commit the block to the blockchain
-                // self.engine_apis[node_idx].update_forkchoice(finalized_hash, block_hash).await?;
-
-                // // Check against the counter instead of l2_block_u64
-                // if payload.block().number == 2 {
-                //     println!("REVERT");
-                //     //Check reverting back to state 1, which shall be proposed before block nr 65.. and we will go back to that.
-                //     self.revert_test(85, node_idx).await?;
-                // }
-
-                self.num_l2_blocks += 1;
+                // To support reorgs
+                self.l1_to_l2.get_mut(&l1_block_number).unwrap().insert(node_chain_id, (payload.block().number, block_hash));
             }
         }
 
@@ -397,119 +385,26 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
     }
 
     pub async fn revert(&mut self, chain: &Chain, node_idx: usize) -> eyre::Result<()> {
+        let node_id = self.get_node_id(node_idx);
+
         // Find the oldest L1 block number (and subtract 1) in the given chain
-        let oldest_l1_block = chain.blocks().keys().min().copied()
+        let target_l1_block = chain.blocks().keys().min().copied()
             .ok_or_else(|| eyre::eyre!("Chain is empty"))?
             .saturating_sub(1);
 
-        // Find the corresponding or closest prior L2 block
-        let l2_block_hash = self.find_l2_block_hash(oldest_l1_block, node_idx);
+        // Revert back to the last L2 block before that L1 block
+        let finalized_block_hash = self.l1_to_l2.get(&self.l1_finalized_block).unwrap().get(&node_id).unwrap().1;
+        let new_block_hash = self.l1_to_l2.get(&target_l1_block).unwrap().get(&node_id).unwrap().1;
 
         // Update forkchoice
-        if let Some(block_hash) = l2_block_hash {
-            self.engine_apis[node_idx].update_forkchoice(block_hash, block_hash).await?;
-            // Remove all mappings newer than the reverted block
-            self.l1_l2_ring_buffers[node_idx].retain(|mapping| mapping.l1_block <= oldest_l1_block);
-        }
-
-        // Remove all mappings newer than the reverted block
-        self.l1_l2_ring_buffers[node_idx].retain(|mapping| mapping.l1_block <= oldest_l1_block);
+        self.engine_apis[node_idx].update_forkchoice(finalized_block_hash, new_block_hash).await?;
 
         Ok(())
     }
 
-    pub async fn revert_test(&mut self, oldest_l1_block: u64, node_idx: usize) -> eyre::Result<()> {
-        // Find the corresponding or closest prior L2 block
-        let l2_block_hash = self.find_l2_block_hash(oldest_l1_block, node_idx);
-
-        //println!("Dani: l1_block we need a snapshot from {}", oldest_l1_block);
-        //println!("Dani: l2_blockhash we found {:?}", l2_block_hash);
-
-        // Update forkchoice
-        //if let Some(block_hash) = l2_block_hash {
-
-            //println!("Dani: reverting to: {}", block_hash);
-            //self.engine_apis[node_idx].update_forkchoice(block_hash, block_hash).await?;
-            let res = self.engine_apis[node_idx].update_forkchoice(GENESIS_HASH, GENESIS_HASH).await?;
-
-            println!("Dani: reverted: {:?}", res);
-             // Remove all mappings newer than the reverted block
-            self.l1_l2_ring_buffers[node_idx].retain(|mapping| mapping.l1_block <= oldest_l1_block);
-        //}
-
-        Ok(())
+    fn get_node_id(&self, node_idx: usize) -> u64 {
+        BASE_CHAIN_ID + (node_idx as u64)
     }
-
-    fn find_l2_block_hash(&self, l1_block: u64, node_idx: usize) -> Option<B256> {
-        println!("ring buffer: {:?}", self.l1_l2_ring_buffers[node_idx]);
-        // Find the exact match or the closest prior L2 block
-        self.l1_l2_ring_buffers[node_idx]
-            .iter()
-            .rev()
-            .find(|mapping| mapping.l1_block <= l1_block)
-            .map(|mapping| mapping.l2_hash)
-    }
-
-    fn update_l1_l2_ring_buffer(&mut self, l1_block: u64, l2_block: u64, l2_hash: B256, node_idx: usize) {
-        // Check if we already have an L2 enthy for this L1 block
-        if let Some(existing_index) = self.l1_l2_ring_buffers[node_idx].iter().position(|m| m.l1_block == l1_block) {
-            // We have an existing entry, check if the new L2 block is higher
-            let existing_mapping = &mut self.l1_l2_ring_buffers[node_idx][existing_index];
-            if l2_block > existing_mapping.l2_block {
-                existing_mapping.l2_block = l2_block;
-                existing_mapping.l2_hash = l2_hash;
-            }
-        } else {
-            // No existing entry for this L1 block, add a new one
-            let mapping = L1L2Mapping {
-                l1_block,
-                l2_block,
-                l2_hash,
-            };
-
-            if self.l1_l2_ring_buffers[node_idx].len() == RING_BUFFER_SIZE {
-                // If the buffer is full, remove the oldest entry
-                self.l1_l2_ring_buffers[node_idx].pop_front();
-            }
-
-            // Add the new mapping to the end of the buffer
-            self.l1_l2_ring_buffers[node_idx].push_back(mapping);
-        }
-    }
-
-    // New method to get the L2 block info for a given L1 block number
-    pub fn get_l2_info_for_l1_block(&self, l1_block: u64, node_idx: usize) -> Option<(u64, B256)> {
-        self.l1_l2_ring_buffers[node_idx]
-            .iter()
-            .find(|mapping| mapping.l1_block == l1_block)
-            .map(|mapping| (mapping.l2_block, mapping.l2_hash))
-    }
-
-    fn get_finalized_hash(&self, current_l1_block: u64, node_idx: usize) -> B256 {
-        if current_l1_block < self.l2_genesis_l1_block + FINALIZATION_PERIOD {
-            return GENESIS_HASH;
-        }
-
-        // Calculate the highest block number in the previous finalization period
-        // Example:
-        // If we're at L1 block 65, this will give us 63
-        // If we're at L1 block 128, this will give us 127
-        let highest_finalized_l1_block = ((current_l1_block - 1) / FINALIZATION_PERIOD) * FINALIZATION_PERIOD - 1;
-
-        // Find the L2 block hash for the highest finalized L1 block or the closest prior block
-        for i in (self.l2_genesis_l1_block..=highest_finalized_l1_block).rev() {
-            if let Some(mapping) = self.l1_l2_ring_buffers[node_idx]
-                .iter()
-                .rev()
-                .find(|m| m.l1_block == i)
-            {
-                return mapping.l2_hash;
-            }
-        }
-
-        // If no suitable block is found, return GENESIS_HASH
-        GENESIS_HASH
-     }
 }
 
 /// Decode chain of blocks into a flattened list of receipt logs, filter only transactions to the

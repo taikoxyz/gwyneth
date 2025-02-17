@@ -72,11 +72,11 @@ impl<E: EngineTypes> EngineApiContext<E> {
     }
 
     /// Sends forkchoice update to the engine api
-    pub async fn update_forkchoice(&self, current_head: B256, new_head: B256) -> eyre::Result<()> {
+    pub async fn update_forkchoice(&self, finalized_head: B256, new_head: B256) -> eyre::Result<()> {
         let fork_choice_state = ForkchoiceState {
             head_block_hash: new_head,
-            safe_block_hash: current_head,
-            finalized_block_hash: current_head,
+            safe_block_hash: finalized_head,
+            finalized_block_hash: finalized_head,
         };
         self.fork_choice_updated_v3_wait(fork_choice_state).await
     }
