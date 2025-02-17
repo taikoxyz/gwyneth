@@ -11,6 +11,10 @@ contract xERC20 is GwynethContract {
     event Transfer(address indexed from, address indexed to, uint256 value);
     event Approval(address indexed owner, address indexed spender, uint256 value);
 
+    constructor(uint256 totalSupply) {
+        balanceOf[msg.sender] = totalSupply;
+    }
+
     using EVM for address;
     using EVM for address payable;
 
@@ -20,10 +24,6 @@ contract xERC20 is GwynethContract {
 
     function on(uint256 chainId) internal view returns (xERC20) {
         return ChainAddress(chainId, this);
-    }
-
-    constructor(uint256 totalSupply) {
-        balanceOf[msg.sender] = totalSupply;
     }
 
     function transfer(address to, uint256 value) public returns (uint256) {
@@ -96,6 +96,21 @@ contract xERC20 is GwynethContract {
         }
         emit Transfer(from, to, value);
         return value;
+    }
+
+    function xTransferFrom(address from, uint256 chain, address to, uint256 value) public returns (bool) {
+        require(balanceOf[from] >= value, "Insufficient balance");
+        if (from != msg.sender) {
+            require(allowance[from][msg.sender] >= value, "Allowance exceeded");
+            allowance[from][msg.sender] -= value;
+        }
+        balanceOf[from] -= value;
+        // Neeed to deduct on the source chain.
+        emit Transfer(msg.sender,address(0x0), value);
+        on(chain)._mint(to, value);
+
+        emit Transfer(from, to, value);
+        return true;
     }
 
     function sendETH(uint256 chain, address payable to) external payable {

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.24;
+pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/utils/Strings.sol";
 
@@ -9,25 +9,13 @@ import "../contracts/L1/ChainProver.sol";
 import "../contracts/L1/VerifierRegistry.sol";
 import "../contracts/tko/TaikoToken.sol";
 //import "../contracts/L1/provers/GuardianProver.sol";
-// import "../contracts/L1/tiers/DevnetTierProvider.sol";
-// import "../contracts/L1/tiers/TierProviderV2.sol";
-// import "../contracts/bridge/Bridge.sol";
-// import "../contracts/tokenvault/BridgedERC20.sol";
-// import "../contracts/tokenvault/BridgedERC721.sol";
-// import "../contracts/tokenvault/BridgedERC1155.sol";
-// import "../contracts/tokenvault/ERC20Vault.sol";
-// import "../contracts/tokenvault/ERC1155Vault.sol";
-// import "../contracts/tokenvault/ERC721Vault.sol";
-// import "../contracts/signal/SignalService.sol";
 // import "../contracts/automata-attestation/AutomataDcapV3Attestation.sol";
 // import "../contracts/automata-attestation/utils/SigVerifyLib.sol";
 // import "../contracts/automata-attestation/lib/PEMCertChainLib.sol";
 //import "../contracts/L1/verifiers/SgxVerifier.sol";
 //import "../contracts/L1/verifiers/MockSgxVerifier.sol"; // Avoid proof verification for now!
-// import "../contracts/team/proving/ProverSet.sol";
 // import "../test/common/erc20/FreeMintERC20.sol";
 // import "../test/common/erc20/MayFailFreeMintERC20.sol";
-// import "../test/L1/TestTierProvider.sol";
 import "../test/DeployCapability.sol";
 
 // Actually this one is deployed already on mainnet, but we are now deploying our own (non via-ir)
