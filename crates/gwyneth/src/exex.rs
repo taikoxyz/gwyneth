@@ -157,7 +157,7 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                     println!("Updated L1 sync data: {}", GWYNETH_SYNCED_L1_BLOCK_IDX);
                 }
 
-                println!("l1 to l2: {:?}", self.l1_to_l2);
+                //println!("l1 to l2: {:?}", self.l1_to_l2);
 
                 self.ctx.events.send(ExExEvent::FinishedHeight(committed_chain.tip().number))?;
             }
