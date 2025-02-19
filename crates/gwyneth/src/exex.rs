@@ -168,6 +168,7 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
 
     pub async fn commit(&mut self, chain: &Chain, node_idx: usize) -> eyre::Result<()> {
         let events = decode_chain_into_rollup_events(chain);
+        // println!("num events: {:?}", events.len());
 
         // Add all other L2 dbs for now as well until dependencies are broken
         // let mut last_block_number = HashMap::new();
@@ -182,25 +183,30 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
 
         for (block, _, event) in events {
             if let RollupContractEvents::BlockProposed(BlockProposed {
-                blockId: block_number,
-                meta,
+                block: ultra_block,
             }) = event
             {
-                println!("block_number: {:?}", block_number);
-                println!("block hash: {:?}", meta.blockHash);
+                //println!("block_number: {:?}", block_number);
+                //println!("block hash: {:?}", meta.blockHash);
                 //println!("tx_list: {:?}", meta.txList);
                 //println!("state diffs: {:?}", meta.stateDiffs);
                 //println!("L1 state diff: {:?}", meta.l1StateDiff.);
 
-                let transactions: Vec<TransactionSigned> = decode_transactions(&meta.txList);
+                // let (da: GwynethDA, tx_list: Vec<u8>) = bincode::deserialize(&ultra_block.da.to_vec()).unwrap_or_else(|err| {
+                //     panic!("DA can't be decoded: {}", err);
+                // });
+
+                let (da, tx_list) = bincode::deserialize::<(GwynethDA, Vec<u8>)>(&ultra_block.da)
+                    .unwrap_or_else(|err| {
+                        panic!("DA can't be decoded: {}", err);
+                    });
+
+                let transactions: Vec<TransactionSigned> = decode_transactions(&tx_list);
                 println!("transactions: {:?}", transactions.len());
 
-                let da: GwynethDA = bincode::deserialize(&meta.stateDiffs.to_vec()).unwrap_or_else(|err| {
-                    panic!("DA can't be decoded: {}", err);
-                });
                 //println!("da: {:?}", da);
 
-                let all_transactions: Vec<TransactionSigned> = decode_transactions(&meta.txList);
+                let all_transactions: Vec<TransactionSigned> = decode_transactions(&tx_list);
                 let node_chain_id = self.get_node_id(node_idx);
 
                 let chain_da = da.chain_das.get(&node_chain_id);
@@ -235,7 +241,7 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                     inner: EthPayloadAttributes {
                         timestamp: block.timestamp,
                         prev_randao: block.mix_hash,
-                        suggested_fee_recipient: meta.coinbase,
+                        suggested_fee_recipient: ultra_block.blocks[0].coinbase,
                         withdrawals: Some(vec![]),
                         parent_beacon_block_root: block.parent_beacon_block_root,
                     },

@@ -51,11 +51,6 @@ contract DeployL1Locally is DeployCapability {
         // addressNotNull(vm.envAddress("L2_SIGNAL_SERVICE"), "L2_SIGNAL_SERVICE");
         // addressNotNull(vm.envAddress("CONTRACT_OWNER"), "CONTRACT_OWNER");
 
-        // Sending 10 ETH to Alice
-        address payable admin = payable(0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266);
-        (bool success, ) = admin.call{value: 10 ether}("");
-        require(success, "Failed to send Ether");
-
         require(vm.envBytes32("L2_GENESIS_HASH") != 0, "L2_GENESIS_HASH");
         address contractOwner = MAINNET_CONTRACT_OWNER;
 
@@ -128,6 +123,11 @@ contract DeployL1Locally is DeployCapability {
 
     //     AddressManager(rollupAddressManager).transferOwnership(contractOwner);
     //     console2.log("** rollupAddressManager ownership transferred to:", contractOwner);
+
+        // Sending 10 ETH to Alice
+        address payable admin = payable(0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266);
+        (bool success, ) = admin.call{value: 10 ether}("");
+        require(success, "Failed to send Ether");
     }
 
     function deploySharedContracts(address owner) internal returns (address sharedAddressManager) {
@@ -256,13 +256,15 @@ contract DeployL1Locally is DeployCapability {
                 Gwyneth.init,
                 (
                     owner,
-                    rollupAddressManager,
                     vm.envBytes32("L2_GENESIS_HASH")
                 )
             ),
             registerTo: rollupAddressManager
         });
         console2.log("gwyneth: ", address(gwyneth));
+
+        // Enable the proposer
+        Gwyneth(payable(gwyneth)).setProposer(0xE25583099BA105D9ec0A67f5Ae86D90e50036425, true);
 
         /* Deploy ChainProver */
         deployProxy({

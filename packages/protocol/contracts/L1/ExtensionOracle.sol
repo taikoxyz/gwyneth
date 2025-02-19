@@ -1,13 +1,19 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.24;
+pragma solidity ^0.8.28;
 
 import "./GwynethData.sol";
 
 contract ExtensionOracle {
-    // TODO(Brecht): change to transient
-    uint private returndataCounter;
-    GwynethData.ReturnData[] private returndata;
+
+    struct ReturnData {
+        bytes data;
+        bool isRevert;
+    }
+
+    uint private transient returndataCounter;
+    // TODO(Brecht): change to transient, solidity doesn't support this yet
+    ReturnData[] private returndata;
 
     address payable private constant gwyneth = payable(0x9fCF7D13d10dEdF17d0f24C62f0cf4ED462f65b7);
 
@@ -21,21 +27,12 @@ contract ExtensionOracle {
 
     function _returnData() internal {
         if (msg.sender == gwyneth) {
-            returndataCounter = 0;
-            returndata = abi.decode(msg.data, (GwynethData.ReturnData[]));
-            assembly {
-                tstore(0, 1)
-            }
+            returndata = abi.decode(msg.data, (ReturnData[]));
         } else {
             //require(returndataCounter < returndata.length, "invalid call pattern");
 
-            uint initialized;
-            assembly {
-                initialized := tload(0)
-            }
-
             // Allow forge simulation to work
-            if (initialized == 0 || returndataCounter >= returndata.length) {
+            if (returndataCounter >= returndata.length) {
                 (bool success, bytes memory data) = msg.sender.call(msg.data);
                 if (!success) {
                     assembly {
@@ -54,7 +51,7 @@ contract ExtensionOracle {
                 require(success, "Failed to send Ether");
             }
 
-            GwynethData.ReturnData memory returnData = returndata[returndataCounter++];
+            ReturnData memory returnData = returndata[returndataCounter++];
             bytes memory data = returnData.data;
             if (returnData.isRevert) {
                 assembly {

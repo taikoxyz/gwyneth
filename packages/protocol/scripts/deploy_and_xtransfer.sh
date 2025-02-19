@@ -38,6 +38,8 @@ check_contract_deployment() {
     fi
 }
 
+echo -e "${GREEN}Executing xSetup...${NC}"
+forge script scripts/xSetup.s.sol --rpc-url http://127.0.0.1:32002 -vvvv --broadcast --private-key 0x53321db7c1e331d93a11a41d16f004d7ff63972ec8ec7c25db329728ceeb1710 --legacy
 
 echo -e "${GREEN}Deploying to L1...${NC}"
 # Capture the forge script output

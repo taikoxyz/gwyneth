@@ -63,6 +63,11 @@ library EVM {
         view
         returns (bool)
     {
+        // If we're already on the target chain, don't do anything
+        if (chainID == block.chainid) {
+            return true;
+        }
+
         // Call the custom precompile
         bytes memory input = abi.encodePacked(version, uint64(chainID), sandbox, txOrigin, msgSender, blockHash, proof);
         (bool success, bytes memory result) = xCallOptionsAddress.staticcall(input);
