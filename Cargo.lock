@@ -3475,6 +3475,9 @@ dependencies = [
 name = "gwyneth"
 version = "1.0.6"
 dependencies = [
+ "alloy-consensus",
+ "alloy-eips",
+ "alloy-primitives 0.8.14",
  "alloy-rlp",
  "alloy-serde",
  "alloy-sol-types",

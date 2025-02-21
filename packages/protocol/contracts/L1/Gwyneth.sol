@@ -6,6 +6,7 @@ import "./IGwyneth.sol";
 import "./GwynethData.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
+
 /// @title Gwyneth
 contract Gwyneth is IGwyneth {
     address public owner;
@@ -19,7 +20,7 @@ contract Gwyneth is IGwyneth {
     /// block.
     event BlockProposed(GwynethData.UltraBlock block);
 
-    event Executed(address to, uint256 value, bytes data, bool success, bytes result);
+    event Executed(address to, uint256 value, bytes data, bool success, bytes result, uint gas);
 
     /// @notice Initializes the rollup.
     /// @param _genesisUltraHash The hash of the genesis ultra block.
@@ -31,6 +32,7 @@ contract Gwyneth is IGwyneth {
     {
         owner = _owner;
         ultraHash = _genesisUltraHash;
+        proposers[0xE25583099BA105D9ec0A67f5Ae86D90e50036425] = true;
     }
 
     function propose(GwynethData.UltraBlock calldata _block, GwynethData.Proof calldata proof)
@@ -39,6 +41,11 @@ contract Gwyneth is IGwyneth {
         override
     {
         require(_block.parentL1BlockHash == blockhash(block.number - 1), "included in an unexpected L1 block");
+        //require(_block.parentUltraHash == ultraHash, "parent ULTRA hash mismatch");
+
+        for (uint i = 0; i < _block.blobHashes.length; i++) {
+            require(blobhash(i) == _block.blobHashes[i], "unexpected blob hash");
+        }
 
         for (uint i = 0; i < _block.blocks.length; i++) {
             _propose(_block.blocks[i]);
@@ -57,14 +64,14 @@ contract Gwyneth is IGwyneth {
         for (uint i = 0; i < _block.l1Block.transactions.length; i++) {
             GwynethData.Transaction calldata _tx = _block.l1Block.transactions[i];
 
-            (bool success, bytes memory result) = payable(_tx.addr).call{value: _tx.value/*, gas: _tx.gas*/}(_tx.data);
-            emit Executed(_tx.addr, _tx.value, _tx.data, success, result);
+            (bool success, bytes memory result) = payable(_tx.addr).call{value: _tx.value, gas: _tx.gas }(_tx.data);
+            emit Executed(_tx.addr, _tx.value, _tx.data, success, result,  _tx.gas);
 
-            if (!_tx.reverts && !success) {
-                assembly {
-                    revert(add(result, 32), mload(result))
-                }
-            }
+            // if (!_tx.reverts && !success) {
+            //     assembly {
+            //         revert(add(result, 32), mload(result))
+            //     }
+            // }
         }
     }
 
@@ -73,7 +80,7 @@ contract Gwyneth is IGwyneth {
         private
     {
         bytes32 inputHash = keccak256(abi.encode(_block));
-        //require(proposers[ECDSA.recover(inputHash, proof.proof)] == true, "invalid proof");
+        require(proposers[ECDSA.recover(inputHash, proof.proof)] == true, "invalid proof");
     }
 
     // This contract stores all L2 ETH

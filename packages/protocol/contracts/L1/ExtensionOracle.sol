@@ -28,6 +28,7 @@ contract ExtensionOracle {
     function _returnData() internal {
         if (msg.sender == gwyneth) {
             returndata = abi.decode(msg.data, (ReturnData[]));
+            returndataCounter = 0;
         } else {
             //require(returndataCounter < returndata.length, "invalid call pattern");
 
