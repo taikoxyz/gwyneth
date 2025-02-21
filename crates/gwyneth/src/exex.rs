@@ -1,9 +1,11 @@
 use std::{collections::{HashMap, VecDeque}, marker::PhantomData, sync::Arc};
+use alloy_consensus::{Blob, SidecarCoder, SimpleCoder, Transaction};
 use alloy_rlp::Decodable;
 use alloy_sol_types::{sol, SolEventInterface};
+use alloy_eips::eip4844::kzg_to_versioned_hash;
+use alloy_primitives::{address, b256};
 use reth_network::NetworkInfo;
 use reth_rpc_api::eth::helpers::EthApiSpec;
-
 use crate::{
     engine_api::EngineApiContext, GwynethEngineTypes, GwynethNode, GwynethPayloadAttributes,
     GwynethPayloadBuilderAttributes,
@@ -19,7 +21,7 @@ use reth_node_builder::{components::Components, FullNode, Node, NodeAdapter};
 use reth_node_ethereum::{node::EthereumAddOns, EthExecutorProvider};
 use reth_payload_builder::EthBuiltPayload;
 use reth_primitives::{
-    address, Address, Bytes, ChainDA, GwynethDA, SealedBlock, SealedBlockWithSenders, StateDiff, TransactionSigned, B256, U256
+    Address, Bytes, ChainDA, GwynethDA, SealedBlock, SealedBlockWithSenders, StateDiff, TransactionSigned, B256, U256
 };
 use reth_provider::{
     providers::BlockchainProvider, BlockNumReader, CanonStateSubscriptions, DatabaseProviderFactory,
@@ -27,7 +29,7 @@ use reth_provider::{
 use reth_rpc_types::{engine::PayloadStatusEnum, BlockNumberOrTag};
 use reth_transaction_pool::{
     blobstore::DiskFileBlobStore, CoinbaseTipOrdering, EthPooledTransaction,
-    EthTransactionValidator, Pool, TransactionValidationTaskExecutor,
+    EthTransactionValidator, Pool, TransactionValidationTaskExecutor, TransactionPool,
 };
 use RollupContract::{BlockProposed, RollupContractEvents};
 use reth_provider::BlockReaderIdExt;
@@ -35,23 +37,8 @@ use reth_provider::{GWYNETH_SYNCED_L1_BLOCK_IDX, GWYNETH_SYNCED_L2_BLOCK_IDX};
 
 const ROLLUP_CONTRACT_ADDRESS: Address = address!("9fCF7D13d10dEdF17d0f24C62f0cf4ED462f65b7");
 pub const BASE_CHAIN_ID: u64 = 167010;
-const INITIAL_TIMESTAMP: u64 = 1710338135;
-const RING_BUFFER_SIZE: usize = 128;
-
 const FINALIZATION_PERIOD: u64 = 64;
-const GENESIS_HASH: B256 = B256::new([
-    0x93, 0x0c, 0x04, 0x60, 0x34, 0x08, 0xca, 0x90,
-    0xf7, 0x30, 0xfb, 0x9a, 0xd7, 0x92, 0xaf, 0x0d,
-    0x42, 0xbd, 0x01, 0xdb, 0x97, 0x63, 0x3d, 0xf8,
-    0xf9, 0xf5, 0x83, 0x30, 0xcf, 0x10, 0x3b, 0x0c
-]);
-
-#[derive(Clone, Debug)]
-struct L1L2Mapping {
-    l1_block: u64,
-    l2_block: u64,
-    l2_hash: B256,
-}
+const GENESIS_HASH: B256 = b256!("930c04603408ca90f730fb9ad792af0d42bd01db97633df8f9f58330cf103b0c");
 
 pub type GwynethFullNode = FullNode<
     NodeAdapter<
@@ -130,8 +117,19 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
     pub async fn start(mut self) -> eyre::Result<()> {
         while let Some(notification) = self.ctx.notifications.recv().await {
             if let Some(reverted_chain) = notification.reverted_chain() {
-                for i in 0..self.nodes.len() {
-                    self.revert(&reverted_chain, i).await?;
+                // Find the oldest L1 block number (and subtract 1) in the given chain to get the newest latest L1 block
+                let target_l1_block = reverted_chain.blocks().keys().min().copied()
+                    .ok_or_else(|| eyre::eyre!("Chain is empty"))?
+                    .saturating_sub(1);
+
+                // for i in 0..self.nodes.len() {
+                //     self.revert(i, target_l1_block).await?;
+                // }
+
+                // Update the sync data
+                unsafe {
+                    GWYNETH_SYNCED_L1_BLOCK_IDX = target_l1_block;
+                    println!("Updated L1 sync data: {}", GWYNETH_SYNCED_L1_BLOCK_IDX);
                 }
             }
 
@@ -142,9 +140,9 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                 for block in committed_chain.blocks_iter() {
                     self.l1_to_l2.insert(block.number, self.l1_to_l2.get(&(block.number - 1)).unwrap().clone());
                 }
-                self.l1_finalized_block = committed_chain.tip().number.saturating_sub(FINALIZATION_PERIOD);
+                //self.l1_finalized_block = committed_chain.tip().number.saturating_sub(FINALIZATION_PERIOD);
                 // prune list
-                self.l1_to_l2.retain(|&l1_block, _| l1_block >= self.l1_finalized_block);
+                //self.l1_to_l2.retain(|&l1_block, _| l1_block >= self.l1_finalized_block);
 
                 // Sync nodes
                 for i in 0..self.nodes.len() {
@@ -157,17 +155,24 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                     println!("Updated L1 sync data: {}", GWYNETH_SYNCED_L1_BLOCK_IDX);
                 }
 
-                //println!("l1 to l2: {:?}", self.l1_to_l2);
-
                 self.ctx.events.send(ExExEvent::FinishedHeight(committed_chain.tip().number))?;
+
+                // if committed_chain.tip().number == 20 {
+                //     println!("REVERT");
+                //     for i in 0..self.nodes.len() {
+                //         self.revert(i, 10).await?;
+                //     }
+                // }
             }
         }
 
         Ok(())
     }
 
+    // TODO(Brecht): handle block by block instead of chain (easier to manage reorg stuff)
     pub async fn commit(&mut self, chain: &Chain, node_idx: usize) -> eyre::Result<()> {
         let events = decode_chain_into_rollup_events(chain);
+        // println!("num events: {:?}", events.len());
 
         // Add all other L2 dbs for now as well until dependencies are broken
         // let mut last_block_number = HashMap::new();
@@ -180,28 +185,27 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
         //     last_block_number.insert(chain_id, state_provider.last_block_number()?);
         // }
 
-        for (block, _, event) in events {
+        for (block, tx, event) in events {
             if let RollupContractEvents::BlockProposed(BlockProposed {
-                blockId: block_number,
-                meta,
+                block: ultra_block,
             }) = event
             {
-                println!("block_number: {:?}", block_number);
-                println!("block hash: {:?}", meta.blockHash);
-                //println!("tx_list: {:?}", meta.txList);
-                //println!("state diffs: {:?}", meta.stateDiffs);
-                //println!("L1 state diff: {:?}", meta.l1StateDiff.);
+                // Decode blobs and concatenate them to get the raw transactions
+                let data = get_blob_data(self.ctx.pool(), tx, ultra_block.blobHashes)?;
+                assert_eq!(data, ultra_block.da, "blob data does not match calldata");
 
-                let transactions: Vec<TransactionSigned> = decode_transactions(&meta.txList);
+                let (da, tx_list) = bincode::deserialize::<(GwynethDA, Vec<u8>)>(&ultra_block.da)
+                    .unwrap_or_else(|err| {
+                        panic!("DA can't be decoded: {}", err);
+                    });
+
+                let transactions: Vec<TransactionSigned> = decode_transactions(&tx_list);
                 println!("transactions: {:?}", transactions.len());
 
-                let da: GwynethDA = bincode::deserialize(&meta.stateDiffs.to_vec()).unwrap_or_else(|err| {
-                    panic!("DA can't be decoded: {}", err);
-                });
                 //println!("da: {:?}", da);
 
-                let all_transactions: Vec<TransactionSigned> = decode_transactions(&meta.txList);
-                let node_chain_id = self.get_node_id(node_idx);
+                let all_transactions: Vec<TransactionSigned> = decode_transactions(&tx_list);
+                let node_chain_id = self.get_chain_id(node_idx);
 
                 let chain_da = da.chain_das.get(&node_chain_id);
                 if chain_da.is_none() {
@@ -235,7 +239,7 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                     inner: EthPayloadAttributes {
                         timestamp: block.timestamp,
                         prev_randao: block.mix_hash,
-                        suggested_fee_recipient: meta.coinbase,
+                        suggested_fee_recipient: ultra_block.blocks[0].coinbase,
                         withdrawals: Some(vec![]),
                         parent_beacon_block_root: block.parent_beacon_block_root,
                     },
@@ -347,13 +351,6 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                 // trigger forkchoice update via engine api to commit the block to the blockchain
                 self.engine_apis[node_idx].update_forkchoice(finalized_hash, block_hash).await?;
 
-                // if payload.block().number == 2 {
-                //     println!("REVERT");
-                //     let res = self.engine_apis[node_idx].update_forkchoice(finalized_hash, finalized_hash).await?;
-                //     println!("Revert res: {:?}", res);
-                //     continue;
-                // }
-
                 // loop {
                 //     // wait for the block to commit
                 //     if let Some(latest_block) =
@@ -370,11 +367,14 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                 //     tokio::time::sleep(std::time::Duration::from_millis(2)).await;
                 // }
 
-                println!("[L1 block {}] Done with block {}: {}", block.number, node_chain_id, payload.block().number);
+                println!("[L1 block {}] Done with block {}: {} ({}, finalized: {})", block.number, node_chain_id, payload.block().number, block_hash, finalized_hash);
+                if payload.block().number == 1 {
+                    assert_eq!(payload.block().parent_hash, GENESIS_HASH, "genesis hash is incorrect");
+                }
 
                 // For rbuilder syncing
                 let mut l2_block_indices = GWYNETH_SYNCED_L2_BLOCK_IDX.lock().unwrap();
-                l2_block_indices.insert(self.nodes[node_idx].chain_spec().chain().id(), payload.block().number);
+                l2_block_indices.insert(node_chain_id, payload.block().number);
 
                 // To support reorgs
                 self.l1_to_l2.get_mut(&l1_block_number).unwrap().insert(node_chain_id, (payload.block().number, block_hash));
@@ -384,26 +384,26 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
         Ok(())
     }
 
-    pub async fn revert(&mut self, chain: &Chain, node_idx: usize) -> eyre::Result<()> {
-        let node_id = self.get_node_id(node_idx);
+    pub async fn revert(&mut self, node_idx: usize, target_l1_block: u64) -> eyre::Result<()> {
+        let chain_id = self.get_chain_id(node_idx);
 
-        // Find the oldest L1 block number (and subtract 1) in the given chain
-        let target_l1_block = chain.blocks().keys().min().copied()
-            .ok_or_else(|| eyre::eyre!("Chain is empty"))?
-            .saturating_sub(1);
+        // Get the finalized block and the last L2 block still included in the canonical L1 chain
+        let finalized_block_hash = self.l1_to_l2.get(&self.l1_finalized_block).unwrap().get(&chain_id).unwrap().1;
+        let newest_block = self.l1_to_l2.get(&target_l1_block).unwrap().get(&chain_id).unwrap();
 
-        // Revert back to the last L2 block before that L1 block
-        let finalized_block_hash = self.l1_to_l2.get(&self.l1_finalized_block).unwrap().get(&node_id).unwrap().1;
-        let new_block_hash = self.l1_to_l2.get(&target_l1_block).unwrap().get(&node_id).unwrap().1;
+        // Update forkchoice to revert back
+        self.engine_apis[node_idx].update_forkchoice(finalized_block_hash, newest_block.1).await?;
 
-        // Update forkchoice
-        self.engine_apis[node_idx].update_forkchoice(finalized_block_hash, new_block_hash).await?;
+        // Update the sync info
+        let mut l2_block_indices = GWYNETH_SYNCED_L2_BLOCK_IDX.lock().unwrap();
+        l2_block_indices.insert(chain_id, newest_block.0);
 
         Ok(())
     }
 
-    fn get_node_id(&self, node_idx: usize) -> u64 {
-        BASE_CHAIN_ID + (node_idx as u64)
+    fn get_chain_id(&self, node_idx: usize) -> u64 {
+        //BASE_CHAIN_ID + (node_idx as u64)
+        self.nodes[node_idx].chain_spec().chain().id()
     }
 }
 
@@ -449,4 +449,34 @@ fn decode_transactions(tx_list: &[u8]) -> Vec<TransactionSigned> {
         println!("decode_transactions not successful: {e:?}, use empty tx_list");
         vec![]
     })
+}
+
+fn get_blob_data<Pool: TransactionPool>(pool: &Pool, tx: &TransactionSigned, blob_hashes: Vec<B256>) -> eyre::Result<Vec<u8>> {
+    let blobs: Vec<_> = if let Some(sidecar) = pool.get_blob(tx.hash())? {
+        // Try to get blobs from the transaction pool
+        sidecar.blobs.clone().into_iter().zip(sidecar.commitments.clone()).collect()
+    } else {
+        Vec::new()
+    };
+
+    // Filter blobs that are present in the block data
+    let blobs = blobs
+        .into_iter()
+        // Convert blob KZG commitments to versioned hashes
+        .map(|(blob, commitment)| (blob, kzg_to_versioned_hash(commitment.as_slice())))
+        // Filter only blobs that are present in the block data
+        .filter(|(_, hash)| blob_hashes.contains(hash))
+        .map(|(blob, _)| Blob::from(*blob))
+        .collect::<Vec<_>>();
+    if blobs.len() != blob_hashes.len() {
+        eyre::bail!("some blobs not found")
+    }
+
+    // Decode blobs and concatenate them to get the raw transactions
+    let data = SimpleCoder::default()
+        .decode_all(&blobs)
+        .ok_or(eyre::eyre!("failed to decode blobs"))?
+        .concat();
+
+    Ok(data)
 }

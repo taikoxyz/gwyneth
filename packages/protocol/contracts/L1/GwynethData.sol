@@ -6,26 +6,27 @@ pragma solidity ^0.8.20;
 /// @notice This library defines various data structures used in the Gwyneth
 /// protocol.
 library GwynethData {
-    /// @dev Struct containing data only required for proving a block
-    struct BlockMetadata {
-        bytes32 blockHash;
-        bytes32 parentBlockHash;
-        bytes32 parentMetaHash;
-        bytes32 l1Hash;
-        uint256 difficulty;
-        bytes32 blobHash;
+    /// @dev ULTRA TX
+    struct UltraBlock {
+        bytes32 ultraHash;
+        bytes32 parentUltraHash;
+        bytes32 parentL1BlockHash;
+
+        bytes32[] blobHashes;
+        bytes da;
+
+        Block[] blocks;
+    }
+
+    /// @dev Struct containing all block data
+    struct Block {
+        L1Block l1Block;
+
         bytes32 extraData;
         address coinbase;
-        uint64 l2BlockNumber;
-        uint32 gasLimit;
-        uint32 l1StateBlockNumber;
-        uint64 timestamp;
-        uint24 txListByteOffset;
-        uint24 txListByteSize;
-        bool blobUsed;
-        bytes txList;
-        bytes stateDiffs;
-        L1Block l1Block;
+
+        uint24 daByteOffset;
+        uint24 daByteSize;
     }
 
     /// @dev Struct representing the state that has to be applied to L1 in sequential order
@@ -37,6 +38,8 @@ library GwynethData {
         address addr;
         bytes data;
         uint256 value;
+        uint64 gas;
+        bool reverts;
     }
 
     struct StateDiffAccount {
@@ -49,8 +52,7 @@ library GwynethData {
         bytes32 value;
     }
 
-    struct ReturnData {
-        bytes data;
-        bool isRevert;
+    struct Proof {
+        bytes proof;
     }
 }

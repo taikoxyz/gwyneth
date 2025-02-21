@@ -6,7 +6,7 @@ import "forge-std/console2.sol";
 
 import "../contracts/examples/xERC20.sol";
 
-contract XTransfer is Script {
+contract XDeposit is Script {
     // The deployed contract address (will be the same on both chains due to deterministic deployment)
     address constant TOKEN_ADDRESS = 0x5FbDB2315678afecb367f032d93F642f64180aa3;
 
@@ -20,10 +20,11 @@ contract XTransfer is Script {
     function setUp() public {}
 
     function run() public {
+
         vm.startBroadcast(ALICE_PK);
 
-        (bool success, ) = ALICE.call{value: 0.01 ether}("");
-        require(success, "Failed to send Ether");
+        //(bool success, ) = ALICE.call{value: 0.01 ether}("");
+        //require(success, "Failed to send Ether");
 
         // L1 -> L2 (ETH)
         xERC20(TOKEN_ADDRESS).sendETH{value: 4 ether}(167011, payable(ALICE));
@@ -31,6 +32,7 @@ contract XTransfer is Script {
         // L1 -> L2 (ERC20)
         xERC20(TOKEN_ADDRESS).xTransfer(167010, BOB, 333);
         xERC20(TOKEN_ADDRESS).xTransfer(167011, CHARLIE, 666);
+        xERC20(TOKEN_ADDRESS).xTransfer(160010, 167011, CHARLIE, 666);
 
         vm.stopBroadcast();
     }

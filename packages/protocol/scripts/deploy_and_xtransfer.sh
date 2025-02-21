@@ -38,6 +38,10 @@ check_contract_deployment() {
     fi
 }
 
+echo -e "${GREEN}Executing xSetup...${NC}"
+forge script scripts/xSetup.s.sol --rpc-url http://127.0.0.1:32002 -vvvv --broadcast --private-key 0x53321db7c1e331d93a11a41d16f004d7ff63972ec8ec7c25db329728ceeb1710 --legacy
+
+sleep 3
 
 echo -e "${GREEN}Deploying to L1...${NC}"
 # Capture the forge script output
@@ -121,6 +125,8 @@ forge script scripts/xDeposit.s.sol --rpc-url http://127.0.0.1:32002 -vvvv --bro
 
 echo -e "${GREEN}Executing xTransfer...${NC}"
 forge script scripts/XTransfer.s.sol --rpc-url http://127.0.0.1:32005 -vvvv --broadcast --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --legacy --gas-estimate-multiplier 500
+
+sleep 3
 
 echo -e "${GREEN}Executing xWithdraw...${NC}"
 forge script scripts/XWithdraw.s.sol --rpc-url http://127.0.0.1:32006 -vvvv --broadcast --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --legacy --gas-estimate-multiplier 500

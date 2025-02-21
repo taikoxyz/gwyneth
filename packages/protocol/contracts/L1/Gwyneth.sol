@@ -1,88 +1,96 @@
 // SPDX-License-Identifier: MIT
-//  _____     _ _         _         _
-// |_   _|_ _(_) |_____  | |   __ _| |__ ___
-//   | |/ _` | | / / _ \ | |__/ _` | '_ (_-<
-//   |_|\__,_|_|_\_\___/ |____\__,_|_.__/__/
 
 pragma solidity ^0.8.24;
 
-import "../gwyneth/GwynethContract.sol";
+import "./IGwyneth.sol";
 import "./GwynethData.sol";
-import "./ExtensionOracle.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+
 
 /// @title Gwyneth
-contract Gwyneth {
+contract Gwyneth is IGwyneth {
     address public owner;
-
-    ExtensionOracle public extensionOracle = ExtensionOracle(payable(0x1ADB9959EB142bE128E6dfEcc8D571f07cd66DeE));
+    // We don't really need to store this but let's do it anyway for now
+    bytes32 public ultraHash;
+    // Temporary proposer map
+    mapping(address proposer => bool whitelisted) public proposers;
 
     /// @dev Emitted when a block is proposed.
-    /// @param blockId The ID of the proposed block.
-    /// @param meta The block metadata containing information about the proposed
+    /// @param block The block metadata containing information about the proposed
     /// block.
-    event BlockProposed(uint256 indexed blockId, GwynethData.BlockMetadata meta);
+    event BlockProposed(GwynethData.UltraBlock block);
 
-    event Executed(address to, uint256 value, bytes data, bool success, bytes result);
+    event Executed(address to, uint256 value, bytes data, bool success, bytes result, uint gas);
 
     /// @notice Initializes the rollup.
-    /// @param _addressManager The {AddressManager} address.
-    /// @param _genesisBlockHash The block hash of the genesis block.
+    /// @param _genesisUltraHash The hash of the genesis ultra block.
     function init(
         address _owner,
-        address _addressManager,
-        bytes32 _genesisBlockHash
+        bytes32 _genesisUltraHash
     )
         external
     {
         owner = _owner;
+        ultraHash = _genesisUltraHash;
+        proposers[0xE25583099BA105D9ec0A67f5Ae86D90e50036425] = true;
     }
 
-    /// @dev Proposes multiple blocks
-    function proposeBlock(GwynethData.BlockMetadata[] calldata blocks)
+    function propose(GwynethData.UltraBlock calldata _block, GwynethData.Proof calldata proof)
         external
         payable
+        override
     {
-        for (uint i = 0; i < blocks.length; i++) {
-            _proposeBlock(blocks[i]);
+        require(_block.parentL1BlockHash == blockhash(block.number - 1), "included in an unexpected L1 block");
+        //require(_block.parentUltraHash == ultraHash, "parent ULTRA hash mismatch");
+
+        for (uint i = 0; i < _block.blobHashes.length; i++) {
+            require(blobhash(i) == _block.blobHashes[i], "unexpected blob hash");
         }
-        _prove(blocks);
+
+        for (uint i = 0; i < _block.blocks.length; i++) {
+            _propose(_block.blocks[i]);
+        }
+        _prove(_block, proof);
+
+        ultraHash = _block.ultraHash;
+
+        emit BlockProposed({ block: _block });
     }
 
-    function _proposeBlock(GwynethData.BlockMetadata calldata _block)
+    function _propose(GwynethData.Block calldata _block)
         private
     {
-        require(_block.parentBlockHash == blockhash(block.number - 1), "included in an unexpected L1 block (hash)");
-        require(_block.timestamp == block.timestamp, "included in an unexpected L1 block (timestamp)");
-
         // Apply L1 state updates
         for (uint i = 0; i < _block.l1Block.transactions.length; i++) {
             GwynethData.Transaction calldata _tx = _block.l1Block.transactions[i];
 
-            (bool success, bytes memory result) = payable(_tx.addr).call{value: _tx.value}(_tx.data);
-            emit Executed(_tx.addr, _tx.value, _tx.data, success, result);
+            (bool success, bytes memory result) = payable(_tx.addr).call{value: _tx.value, gas: _tx.gas }(_tx.data);
+            emit Executed(_tx.addr, _tx.value, _tx.data, success, result,  _tx.gas);
 
-            if (!success) {
-                errorOut(result);
-            }
-        }
-
-        emit BlockProposed({ blockId: _block.l2BlockNumber, meta: _block });
-    }
-
-    function _prove(GwynethData.BlockMetadata[] calldata _block)
-        private
-    {
-
-    }
-
-    function errorOut(bytes memory result)
-        private
-    {
-        assembly ("memory-safe") {
-            revert(add(result, 32), mload(result))
+            // if (!_tx.reverts && !success) {
+            //     assembly {
+            //         revert(add(result, 32), mload(result))
+            //     }
+            // }
         }
     }
 
-    // This contract stores all ETH on L2
+    function _prove(GwynethData.UltraBlock calldata _block, GwynethData.Proof calldata proof)
+        view
+        private
+    {
+        bytes32 inputHash = keccak256(abi.encode(_block));
+        require(proposers[ECDSA.recover(inputHash, proof.proof)] == true, "invalid proof");
+    }
+
+    // This contract stores all L2 ETH
     receive() external payable {}
+
+
+    function setProposer(address proposer, bool whitelisted)
+        external
+    {
+        require(msg.sender == owner);
+        proposers[proposer] = whitelisted;
+    }
 }
