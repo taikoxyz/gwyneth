@@ -122,9 +122,9 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                     .ok_or_else(|| eyre::eyre!("Chain is empty"))?
                     .saturating_sub(1);
 
-                for i in 0..self.nodes.len() {
-                    self.revert(i, target_l1_block).await?;
-                }
+                // for i in 0..self.nodes.len() {
+                //     self.revert(i, target_l1_block).await?;
+                // }
 
                 // Update the sync data
                 unsafe {
