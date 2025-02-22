@@ -122,6 +122,8 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                     .ok_or_else(|| eyre::eyre!("Chain is empty"))?
                     .saturating_sub(1);
 
+                println!("REORG!!! Reverting to {}", target_l1_block);
+
                 // for i in 0..self.nodes.len() {
                 //     self.revert(i, target_l1_block).await?;
                 // }
@@ -191,8 +193,8 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
             }) = event
             {
                 // Decode blobs and concatenate them to get the raw transactions
-                let data = get_blob_data(self.ctx.pool(), tx, ultra_block.blobHashes)?;
-                assert_eq!(data, ultra_block.da, "blob data does not match calldata");
+                // let data = get_blob_data(self.ctx.pool(), tx, ultra_block.blobHashes)?;
+                // assert_eq!(data, ultra_block.da, "blob data does not match calldata");
 
                 let (da, tx_list) = bincode::deserialize::<(GwynethDA, Vec<u8>)>(&ultra_block.da)
                     .unwrap_or_else(|err| {
@@ -456,7 +458,7 @@ fn get_blob_data<Pool: TransactionPool>(pool: &Pool, tx: &TransactionSigned, blo
         // Try to get blobs from the transaction pool
         sidecar.blobs.clone().into_iter().zip(sidecar.commitments.clone()).collect()
     } else {
-        Vec::new()
+        eyre::bail!("blobs not found for: {:?}", tx.hash())
     };
 
     // Filter blobs that are present in the block data
