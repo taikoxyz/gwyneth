@@ -1,4 +1,4 @@
-# Uniswap Local Deployment Guide
+# Uniswap Deployment Guide
 
 This guide explains how to deploy and run Uniswap locally or from a local repository using the following components:
 
@@ -13,6 +13,7 @@ This guide explains how to deploy and run Uniswap locally or from a local reposi
 The deployment addresses (`FACTORY_ADDRESS`, `WETH`) below are valid **only if the first transactions made with the specified private key (`53321db7c1e331d93a11a41d16f004d7ff63972ec8ec7c25db329728ceeb1710`)** are the Uniswap contract deployments.  
 - **Do not use this private key for any other transactions before deploying the Uniswap contracts.**  
 - Otherwise, you must update the **Interface** and **SDK** repositories with the new deployment addresses.
+- URLs below can change depending on if the nodes locally available or external ! (e.g.: localhost vs. l2a.rpc.gwyneth.xyz, etc.)
 
 ---
 
@@ -45,6 +46,7 @@ The deployment addresses (`FACTORY_ADDRESS`, `WETH`) below are valid **only if t
 ## 3. Uniswap Interface/UI
 > **_NOTE:_** Ensure that the SDK repository is in the same root directory as one, as it is referenced in `package.json` like this:
 `"@uniswap/sdk": "file:../v2-sdk"`.
+> **_NOTE:_** Step `nr. 2` and `nr. 3` can be shot up containerized too, from the interface repository, with `docker run -d -p 3000:3000 uniswap_ui` too.
 
 1. Clone the repository:  
    ```bash
@@ -53,10 +55,7 @@ The deployment addresses (`FACTORY_ADDRESS`, `WETH`) below are valid **only if t
 2. Switch to the `gwyneth_uniswapV2` branch:
    ```bash
    git checkout gwyneth_uniswapV2
-3. Install dependencies
-   ```bash
-   npm install
-4. Deploy the contracts
+3. Deploy the contracts
    ```bash
    yarn
    export NODE_OPTIONS=--openssl-legacy-provider
