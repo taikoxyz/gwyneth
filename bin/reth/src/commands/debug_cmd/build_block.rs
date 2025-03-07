@@ -19,8 +19,6 @@ use reth_cli_commands::common::{AccessRights, CliNodeTypes, Environment, Environ
 use reth_cli_runner::CliContext;
 use reth_consensus::Consensus;
 use reth_errors::RethResult;
-use reth_evm::execute::{BlockExecutorProvider, Executor};
-use reth_execution_types::ExecutionOutcome;
 use reth_fs_util as fs;
 use reth_node_api::{EngineApiMessageVersion, PayloadBuilderAttributes};
 use reth_node_ethereum::{EthEvmConfig, EthExecutorProvider};
@@ -30,7 +28,7 @@ use reth_primitives::{
 };
 use reth_provider::{
     providers::{BlockchainProvider, ProviderNodeTypes},
-    BlockHashReader, BlockReader, BlockWriter, ChainSpecProvider, ProviderFactory,
+    BlockHashReader, BlockReader, ChainSpecProvider, ProviderFactory,
     StageCheckpointReader, StateProviderFactory,
 };
 use reth_revm::{
@@ -43,8 +41,6 @@ use reth_transaction_pool::{
     blobstore::InMemoryBlobStore, BlobStore, EthPooledTransaction, PoolConfig, TransactionOrigin,
     TransactionPool, TransactionValidationTaskExecutor,
 };
-use reth_trie::StateRoot;
-use reth_trie_db::DatabaseStateRoot;
 use std::{path::PathBuf, str::FromStr, sync::Arc};
 use tracing::*;
 

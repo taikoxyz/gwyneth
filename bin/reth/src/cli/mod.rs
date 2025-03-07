@@ -265,8 +265,10 @@ mod tests {
 
     #[test]
     fn parse_color_mode() {
-        let reth =
-            Cli::<EthereumChainSpecParser, NoArgs>::try_parse_args_from(["reth", "node", "--color", "always"]).unwrap();
+        let reth = Cli::<EthereumChainSpecParser, NoArgs>::try_parse_args_from([
+            "reth", "node", "--color", "always",
+        ])
+        .unwrap();
         assert_eq!(reth.logs.color, ColorMode::Always);
     }
 
@@ -293,7 +295,8 @@ mod tests {
     /// name
     #[test]
     fn parse_logs_path() {
-        let mut reth = Cli::<EthereumChainSpecParser, NoArgs>::try_parse_args_from(["reth", "node"]).unwrap();
+        let mut reth =
+            Cli::<EthereumChainSpecParser, NoArgs>::try_parse_args_from(["reth", "node"]).unwrap();
         reth.logs.log_file_directory =
             reth.logs.log_file_directory.join(reth.chain.chain.to_string());
         let log_dir = reth.logs.log_file_directory;
@@ -303,8 +306,10 @@ mod tests {
         let mut iter = SUPPORTED_CHAINS.iter();
         iter.next();
         for chain in iter {
-            let mut reth =
-                Cli::<EthereumChainSpecParser, NoArgs>::try_parse_args_from(["reth", "node", "--chain", chain]).unwrap();
+            let mut reth = Cli::<EthereumChainSpecParser, NoArgs>::try_parse_args_from([
+                "reth", "node", "--chain", chain,
+            ])
+            .unwrap();
             reth.logs.log_file_directory =
                 reth.logs.log_file_directory.join(reth.chain.chain.to_string());
             let log_dir = reth.logs.log_file_directory;

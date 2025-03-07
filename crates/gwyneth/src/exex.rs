@@ -208,7 +208,7 @@ pub struct Rollup<Node: reth_node_api::FullNodeComponents> {
 }
 
 impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
-    pub async fn new(
+    pub fn new(
         ctx: ExExContext<Node>,
         nodes: Vec<GwynethFullNode>,
         l1_parents: L1ParentStates,
@@ -324,7 +324,7 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                 );
 
                 // trigger new payload building draining the pool
-                node.payload_builder().send_new_payload(builder_attrs).await.unwrap();
+                node.payload_builder().send_new_payload(builder_attrs).await.unwrap()?;
 
                 // wait for the payload builder to have finished building
                 let mut payload = EthBuiltPayload::new(

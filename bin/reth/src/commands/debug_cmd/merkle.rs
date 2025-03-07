@@ -153,9 +153,7 @@ impl<C: ChainSpecParser<ChainSpec = ChainSpec>> Command<C> {
             td += sealed_block.difficulty;
             let db = SyncStateProviderDatabase::new(
                 Some(provider_factory.chain_spec().chain().id()),
-                StateProviderDatabase::new(
-                    LatestStateProviderRef::new(&provider_rw),
-                ),
+                StateProviderDatabase::new(LatestStateProviderRef::new(&provider_rw)),
             );
             let mut executor = executor_provider.batch_executor(db);
             executor.execute_and_verify_one((&sealed_block.clone().unseal(), td).into())?;

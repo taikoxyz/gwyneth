@@ -188,7 +188,6 @@ pub async fn create_gwyneth_nodes(
         .iter()
         .map(|handle| GwynethFullNode::Provider2(handle.node.clone()))
         .collect::<Vec<_>>()
-        // todo!()
     } else {
         // BlockchainProvider
         arg.configure(l1_node_config, exec, |ctx| ctx.node(GwynethNode::default()).launch())
