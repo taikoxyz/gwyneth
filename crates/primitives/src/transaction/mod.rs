@@ -237,6 +237,19 @@ impl Transaction {
         }
     }
 
+    /// Gets the transaction's chain id.
+    pub fn chain_id(&self) -> Option<u64> {
+        match self {
+            Self::Legacy(TxLegacy { chain_id, .. }) => *chain_id,
+            Self::Eip2930(TxEip2930 { chain_id, .. }) => Some(*chain_id),
+            Self::Eip1559(TxEip1559 { chain_id, .. }) => Some(*chain_id),
+            Self::Eip4844(TxEip4844 { chain_id, .. }) => Some(*chain_id),
+            Self::Eip7702(TxEip7702 { chain_id, .. }) => Some(*chain_id),
+            #[cfg(feature = "optimism")]
+            Self::Deposit(_) => None,
+        }   
+    }
+
     /// Gets the transaction's [`TxKind`], which is the address of the recipient or
     /// [`TxKind::Create`] if the transaction is a contract creation.
     pub const fn kind(&self) -> TxKind {
@@ -1139,6 +1152,11 @@ impl TransactionSigned {
     /// Reference to transaction hash. Used to identify transaction.
     pub const fn hash_ref(&self) -> &TxHash {
         &self.hash
+    }
+
+    /// Gets the transaction's chain id.
+    pub fn chain_id(&self) -> Option<u64> {
+        self.transaction.chain_id()
     }
 
     /// Recover signer from signature and hash.

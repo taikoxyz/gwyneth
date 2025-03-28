@@ -1,0 +1,7 @@
+{
+  "chain_prover": "0x72bCbB3f339aF622c28a26488Eed9097a2977404",
+  "rollup_address_manager": "0x8F0342A7060e76dfc7F6e9dEbfAD9b9eC919952c",
+  "shared_address_manager": "0x17435ccE3d1B4fA2e5f8A08eD921D57C6762A180",
+  "taiko": "0x9fCF7D13d10dEdF17d0f24C62f0cf4ED462f65b7",
+  "taiko_token": "0x422A3492e218383753D8006C7Bfa97815B44373F"
+}

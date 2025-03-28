@@ -21,22 +21,14 @@ contract XTransfer is Script {
     function run() public {
         address bob = vm.addr(BOB_PK);
 
-        vm.startBroadcast();
-        // Sending 1 ETH
-        (bool success, ) = bob.call{value: 1 ether}("");
-        require(success, "Failed to send Ether");
-        vm.stopBroadcast();
-
-        console.log("\n=== Before Transfer ===");
-
         vm.startBroadcast(BOB_PK);
 
         // Withdraw some tokens to L1
         xERC20(TOKEN_ADDRESS).xTransfer(160010, CHARLIE, 222);
 
-        vm.stopBroadcast();
+        // L2 -> L1 (ETH)
+        xERC20(TOKEN_ADDRESS).sendETH{value: 1.11 ether}(160010, payable(BOB));
 
-        console.log("\n=== After Transfer ===");
-        //checkBalances(); -> EXPLORER
+        vm.stopBroadcast();
     }
 }

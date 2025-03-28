@@ -15,6 +15,17 @@ contract xERC20 is GwynethContract {
         balanceOf[msg.sender] = totalSupply;
     }
 
+    using EVM for address;
+    using EVM for address payable;
+
+    function ChainAddress(uint256 chainId, xERC20 contractAddr) internal view returns (xERC20) {
+        return xERC20(address(contractAddr).onChain(chainId));
+    }
+
+    function on(uint256 chainId) internal view returns (xERC20) {
+        return ChainAddress(chainId, this);
+    }
+
     function transfer(address to, uint256 value) public returns (uint256) {
         require(balanceOf[msg.sender] >= value, "Insufficient balance");
         balanceOf[msg.sender] -= value;
@@ -23,35 +34,32 @@ contract xERC20 is GwynethContract {
         return value;
     }
 
+    function xTransfer(uint256 fromChain, uint256 toChain, address to, uint256 value) public returns (uint256) {
+        return on(fromChain)._xTransfer(msg.sender, toChain, to, value);
+    }
+
     function _transfer(address from, address to, uint256 value) public returns (uint256) {
-        require(msg.sender == address(this), "Only this contract can mint");
+        //require(msg.sender == address(this), "Only this contract can mint");
         balanceOf[from] -= value;
         balanceOf[to] += value;
         return value;
     }
 
     function _mint(address to, uint256 value) public returns (uint256) {
-        require(msg.sender == address(this), "Only this contract can mint");
+        //require(msg.sender == address(this), "Only this contract can mint");
         balanceOf[to] += value;
         return value;
     }
 
-    function xTransfer(uint256 fromChain, uint256 toChain, address to, uint256 value) public returns (uint256) {
-        EVM.xCallOptions(fromChain);
-        return this._xTransfer(msg.sender, toChain, to, value);
-    }
-
     function _xTransfer(address from, uint256 chain, address to, uint256 value) external returns (uint256) {
-        require(msg.sender == address(this), "Only contract itself can call this function");
+        //require(msg.sender == address(this), "Only contract itself can call this function");
         balanceOf[from] -= value;
-        EVM.xCallOptions(chain);
-        return this._mint(to, value);
+        return on(chain)._mint(to, value);
     }
 
     function xTransfer(uint256 chain, address to, uint256 value) public returns (uint256) {
         balanceOf[msg.sender] -= value;
-        EVM.xCallOptions(chain);
-        return this._mint(to, value);
+        return on(chain)._mint(to, value);
     }
 
     function sandboxedTransfer(uint256 chain, address to, uint256 value) public returns (uint256) {
@@ -66,15 +74,14 @@ contract xERC20 is GwynethContract {
     }
 
     function _approve(address owner, address spender, uint256 value) public returns (uint256) {
-        require(msg.sender == address(this), "Only contract itself can call this function");
+        // require(msg.sender == address(this), "Only contract itself can call this function");
         allowance[owner][spender] = value;
         emit Approval(owner, spender, value);
         return value;
     }
 
     function xApprove(uint256 chain, address spender, uint256 value) public returns (uint256) {
-        EVM.xCallOptions(chain);
-        return this._approve(msg.sender, spender, value);
+        return on(chain)._approve(msg.sender, spender, value);
     }
 
     function transferFrom(address from, address to, uint256 value) public returns (uint256) {
@@ -89,5 +96,25 @@ contract xERC20 is GwynethContract {
         }
         emit Transfer(from, to, value);
         return value;
+    }
+
+    function xTransferFrom(address from, uint256 chain, address to, uint256 value) public returns (bool) {
+        require(balanceOf[from] >= value, "Insufficient balance");
+        if (from != msg.sender) {
+            require(allowance[from][msg.sender] >= value, "Allowance exceeded");
+            allowance[from][msg.sender] -= value;
+        }
+        balanceOf[from] -= value;
+        // Neeed to deduct on the source chain.
+        emit Transfer(msg.sender,address(0x0), value);
+        on(chain)._mint(to, value);
+
+        emit Transfer(from, to, value);
+        return true;
+    }
+
+    function sendETH(uint256 chain, address payable to) external payable {
+        (bool success, ) = to.onChain(chain).call{value: msg.value}("");
+        require(success);
     }
 }

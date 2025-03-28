@@ -38,6 +38,10 @@ check_contract_deployment() {
     fi
 }
 
+echo -e "${GREEN}Executing xSetup...${NC}"
+forge script scripts/xSetup.s.sol --rpc-url http://127.0.0.1:32002 -vvvv --broadcast --private-key 0x53321db7c1e331d93a11a41d16f004d7ff63972ec8ec7c25db329728ceeb1710 --legacy
+
+sleep 3
 
 echo -e "${GREEN}Deploying to L1...${NC}"
 # Capture the forge script output
@@ -57,7 +61,7 @@ if [ $? -eq 0 ]; then
     # Check if contract is deployed on L1
     if check_contract_deployment "http://127.0.0.1:32002" "$CONTRACT_ADDRESS"; then
         echo -e "${GREEN}Verifying L2A contract...${NC}"
-        forge verify-contract "$CONTRACT_ADDRESS" "contracts/examples/xERC20.sol:xERC20" --watch --verifier-url "http://localhost:64001/api" --verifier blockscout --chain-id 160010 --libraries contracts/examples/EVM.sol:EVM:0x5FbDB2315678afecb367f032d93F642f64180aa3
+        # forge verify-contract "$CONTRACT_ADDRESS" "contracts/examples/xERC20.sol:xERC20" --watch --verifier-url "http://localhost:64001/api" --verifier blockscout --chain-id 160010 --libraries contracts/gwyneth/EVM.sol:EVM:0x5FbDB2315678afecb367f032d93F642f64180aa3
     else
         echo -e "${RED}L1 deployment verification failed. Stopping.${NC}"
         exit 1
@@ -86,7 +90,7 @@ if [ $? -eq 0 ]; then
     # Check if contract is deployed on L2A
     if check_contract_deployment "http://127.0.0.1:32005" "$CONTRACT_ADDRESS"; then
         echo -e "${GREEN}Verifying L2A contract...${NC}"
-        forge verify-contract "$CONTRACT_ADDRESS" "contracts/examples/xERC20.sol:xERC20" --watch --verifier-url "http://localhost:64003/api" --verifier blockscout --chain-id 167010 --libraries contracts/examples/EVM.sol:EVM:0x5FbDB2315678afecb367f032d93F642f64180aa3
+        # forge verify-contract "$CONTRACT_ADDRESS" "contracts/examples/xERC20.sol:xERC20" --watch --verifier-url "http://localhost:64003/api" --verifier blockscout --chain-id 167010 --libraries contracts/gwyneth/EVM.sol:EVM:0x5FbDB2315678afecb367f032d93F642f64180aa3
     else
         echo -e "${RED}L2A deployment verification failed. Stopping.${NC}"
         exit 1
@@ -97,6 +101,7 @@ else
 fi
 
 
+
 echo -e "${GREEN}Deploying to L2B...${NC}"
 forge script --rpc-url http://127.0.0.1:32006 scripts/DeployXERC20.s.sol -vvvv --broadcast --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --legacy
 
@@ -104,7 +109,7 @@ if [ $? -eq 0 ]; then
     # Check if contract is deployed on L2B
     if check_contract_deployment "http://127.0.0.1:32006" "$CONTRACT_ADDRESS"; then
         echo -e "${GREEN}Verifying L2B contract...${NC}"
-        forge verify-contract "$CONTRACT_ADDRESS" "contracts/examples/xERC20.sol:xERC20" --watch --verifier-url "http://localhost:64005/api" --verifier blockscout --chain-id 167011 --libraries contracts/examples/EVM.sol:EVM:0x5FbDB2315678afecb367f032d93F642f64180aa3
+        # forge verify-contract "$CONTRACT_ADDRESS" "contracts/examples/xERC20.sol:xERC20" --watch --verifier-url "http://localhost:64005/api" --verifier blockscout --chain-id 167011 --libraries contracts/gwyneth/EVM.sol:EVM:0x5FbDB2315678afecb367f032d93F642f64180aa3
     else
         echo -e "${RED}L2B deployment verification failed. Stopping.${NC}"
         exit 1
@@ -114,14 +119,14 @@ else
     exit 1
 fi
 
-# Add a delay before xTransfer to ensure everything is ready
-echo -e "${YELLOW}Waiting 5 seconds before executing xTransfer...${NC}"
-sleep 5
+
+echo -e "${GREEN}Executing xDeposit...${NC}"
+forge script scripts/xDeposit.s.sol --rpc-url http://127.0.0.1:32002 -vvvv --broadcast --private-key 0x53321db7c1e331d93a11a41d16f004d7ff63972ec8ec7c25db329728ceeb1710 --legacy
 
 echo -e "${GREEN}Executing xTransfer...${NC}"
-forge script scripts/XTransfer.s.sol --rpc-url http://127.0.0.1:32005 -vvvv --broadcast --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --legacy
+forge script scripts/XTransfer.s.sol --rpc-url http://127.0.0.1:32005 -vvvv --broadcast --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --legacy --gas-estimate-multiplier 500
 
-sleep 5
+sleep 3
 
 echo -e "${GREEN}Executing xWithdraw...${NC}"
-forge script scripts/XWithdraw.s.sol --rpc-url http://127.0.0.1:32006 -vvvv --broadcast --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --legacy
+forge script scripts/XWithdraw.s.sol --rpc-url http://127.0.0.1:32006 -vvvv --broadcast --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --legacy --gas-estimate-multiplier 500

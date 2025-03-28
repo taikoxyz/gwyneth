@@ -1,0 +1,24 @@
+UUID           Name                                             Ports                                                  Status
+9a6f1f3a00b8   blockscout                                       http: 4000/tcp -> http://127.0.0.1:64001               RUNNING
+84051dc46395   blockscout-layer2-1                              http: 4000/tcp -> http://127.0.0.1:64003               RUNNING
+359a91e2685b   blockscout-layer2-1-postgres                     postgresql: 5432/tcp -> postgresql://127.0.0.1:52603   RUNNING
+77d4c68d71c7   blockscout-layer2-1-verif                        http: 8050/tcp -> http://127.0.0.1:64002               RUNNING
+a678a2764701   blockscout-layer2-2                              http: 4000/tcp -> http://127.0.0.1:64005               RUNNING
+4af1974e4a48   blockscout-layer2-2-postgres                     postgresql: 5432/tcp -> postgresql://127.0.0.1:52618   RUNNING
+e8820f6e14f0   blockscout-layer2-2-verif                        http: 8050/tcp -> http://127.0.0.1:64004               RUNNING
+e4b33e7602a3   blockscout-postgres                              postgresql: 5432/tcp -> postgresql://127.0.0.1:52591   RUNNING
+4d081d9548a1   blockscout-verif                                 http: 8050/tcp -> http://127.0.0.1:64000               RUNNING
+aef6e91e4fd6   cl-1-lighthouse-reth                             http: 4000/tcp -> http://127.0.0.1:52587               RUNNING
+                                                                metrics: 5054/tcp -> http://127.0.0.1:52588            
+                                                                tcp-discovery: 9000/tcp -> 127.0.0.1:52589             
+                                                                udp-discovery: 9000/udp -> 127.0.0.1:61757             
+03f31b6fcf84   el-1-reth-lighthouse                             engine-rpc: 8551/tcp -> 127.0.0.1:32001                RUNNING
+                                                                l2-rpc1: 10110/tcp -> 127.0.0.1:32005                  
+                                                                l2-rpc2: 10210/tcp -> 127.0.0.1:32006                  
+                                                                metrics: 9001/tcp -> http://127.0.0.1:32004            
+                                                                rpc: 8545/tcp -> 127.0.0.1:32002                       
+                                                                tcp-discovery: 32000/tcp -> 127.0.0.1:32000            
+                                                                udp-discovery: 32000/udp -> 127.0.0.1:32000            
+                                                                ws: 8546/tcp -> 127.0.0.1:32003                        
+dd12a16fcf9f   validator-key-generation-cl-validator-keystore   <none>                                                 RUNNING
+dc31fb4dc5ed   vc-1-reth-lighthouse                             metrics: 8080/tcp -> http://127.0.0.1:52590            RUNNING
