@@ -2,6 +2,8 @@
 #[global_allocator]
 static ALLOC: reth_cli_util::allocator::Allocator = reth_cli_util::allocator::new_allocator();
 
+use std::path::PathBuf;
+
 use jsonrpsee::{core::client::ClientT, rpc_params};
 use gwyneth::{cli::{create_gwyneth_nodes, GwynethArgs}, exex::{GwynethFullNode, L1ParentStates}};
 use reth::chainspec::EthereumChainSpecParser;
@@ -11,6 +13,14 @@ fn main() -> eyre::Result<()> {
     println!("WTF");
     reth::cli::Cli::<EthereumChainSpecParser, GwynethArgs>::parse_args_l2().run(|builder, arg| async move {
         println!("ignore-payload {:?}", builder.config().builder.ignore_payload);
+        
+        let arg = GwynethArgs {
+            chain_ids: vec![167010, 167011],
+            datadirs: vec![PathBuf::from("data/reth/gwyneth-167010"), PathBuf::from("data/reth/gwyneth-167011")],
+            ports: Some(vec![10110, 10210]),
+            ..Default::default()
+        };
+        
         let gwyneth_nodes = create_gwyneth_nodes(
             &arg, 
             builder.task_executor().clone(),

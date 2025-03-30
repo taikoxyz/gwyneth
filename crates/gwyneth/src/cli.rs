@@ -28,11 +28,13 @@ pub const DEFAULT_DISCOVERY_PORT: u16 = 30303;
 #[derive(Debug, Clone, Default, Args, PartialEq, Eq)]
 pub struct GwynethArgs {
     /// Chain IDs for Gwyneth nodes
-    #[arg(long = "l2.chain_ids", required = true, num_args = 0..,)]
+    // #[arg(long = "l2.chain_ids", required = true, num_args = 0..,)]
+    #[arg(long = "l2.chain_ids", num_args = 0..,)]
     pub chain_ids: Vec<u64>,
 
     /// DB path initialized by reth, passed to rbuilder
-    #[arg(long = "l2.datadirs", required = true, num_args = 0..,)]
+    // #[arg(long = "l2.datadirs", required = true, num_args = 0..,)]
+    #[arg(long = "l2.datadirs", num_args = 0..,)]
     pub datadirs: Vec<PathBuf>,
 
     /// RPC ports for reth nodes
@@ -136,11 +138,12 @@ impl GwynethArgs {
 
             let data_dir =
                 path.unwrap_or_chain_default(node_config.chain.chain, node_config.datadir.clone());
+            let db_path = data_dir.db();
 
             println!("data_dir: {:?}", data_dir);
 
             let db = init_db(
-                data_dir,
+                db_path,
                 DatabaseArguments::new(ClientVersion::default())
                     .with_max_read_transaction_duration(Some(
                         MaxReadTransactionDuration::Unbounded,
@@ -153,7 +156,7 @@ impl GwynethArgs {
             println!(
                 "Gwyneth node {:?} launch with config: {:?}",
                 node_config.chain.chain.id(),
-                node_config.network
+                node_config.rpc
             );
             let node = f(ctx).await.unwrap();
             gwyneth_nodes.push(node);

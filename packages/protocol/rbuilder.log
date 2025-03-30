@@ -5576,3 +5576,13 @@ start_building_job
 run_submit_to_relays_job_and_metrics
 run_submit_to_relays_job
 simming for block 28 (parent: 0xf635f44cb0e933e8cf4e1b1aca54f0e59fd84ba3a41a7cb26075520855b13ce6)
+Dani debug - create relays: RelayConfig { name: "gwyneth", url: "http://0xac6e77dfe25ecd6110b8e780608cce0dab71fdd5ebea22a16c0205200f2f8e2e3ad3b71d3499c54ad14d6c21b41a37ae@localhost:5555", priority: 0, use_ssz_for_submit: false, use_gzip_for_submit: false, optimistic: false, authorization_header: None, builder_id_header: None, api_token_header: None, interval_between_submissions_ms: None, l1_rpc_url: Some("http://localhost:8545"), l1_proposer_pk: Some("39725efee3fb28614de3bacaffe4cc4bd8c436257e2c8bb887c4b5c4be45e76d"), l1_smart_contract_address: Some("0x9fCF7D13d10dEdF17d0f24C62f0cf4ED462f65b7") }
+2025-03-30T06:51:34.282664Z  INFO rbuilder::live_builder::config: Created relay: "gwyneth" (priority: 0)
+cl_node_url: EnvOrValue("http://172.16.240.11:4000", PhantomData<alloc::string::String>) Ok("http://172.16.240.11:4000")
+Error: No such file or directory (os error 2)
+
+Caused by:
+    No such file or directory (os error 2)
+
+Location:
+    /rbuilder/crates/rbuilder/src/live_builder/layer2_info.rs:92:28
