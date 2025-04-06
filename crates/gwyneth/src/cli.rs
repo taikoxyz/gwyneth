@@ -207,6 +207,7 @@ mod tests {
     use clap::Parser;
     use reth_cli_commands::node::NodeCommand;
     use reth_ethereum_cli::chainspec::EthereumChainSpecParser;
+    use reth_tasks::TaskManager;
 
     #[tokio::test]
     async fn test_create_gwyneth_nodes() {

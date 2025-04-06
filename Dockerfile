@@ -14,14 +14,14 @@ COPY ./rbuilder ./rbuilder
 WORKDIR /reth
 RUN cargo build --release --bin reth
 WORKDIR /rbuilder
-RUN cargo build --release --bin rbuilder    
+RUN cargo build --release --bin reth-rbuilder    
 
 FROM ubuntu:22.04 AS runtime
 COPY --from=builder /reth/target/release/reth /usr/local/bin
-COPY --from=builder /rbuilder/target/release/rbuilder /usr/local/bin
+COPY --from=builder /rbuilder/target/release/reth-rbuilder /usr/local/bin
 
 COPY ./rbuilder/config-gwyneth-reth.toml /app/rbuilder/config-gwyneth-reth.toml
-RUN echo '#!/bin/bash\nrbuilder run /app/rbuilder/config-gwyneth-reth.toml' > /app/start_rbuilder.sh && \
+RUN echo '#!/bin/bash\nreth-rbuilder /app/rbuilder/config-gwyneth-reth.toml' > /app/start_rbuilder.sh && \
     chmod +x /app/start_rbuilder.sh
     
 WORKDIR /app

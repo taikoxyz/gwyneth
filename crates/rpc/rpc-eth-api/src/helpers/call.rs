@@ -164,7 +164,8 @@ pub trait EthCall: EstimateCall + Call + LoadPendingBlock {
                         apply_state_overrides(cfg.chain_id, state_overrides, &mut db)?;
                     }
 
-                    if (total_gas_limit - gas_used) < block_env.gas_limit.to() {
+                    let block_gas_limit: u64 = block_env.gas_limit.to();
+                    if (total_gas_limit - gas_used) < block_gas_limit {
                         return Err(
                             EthApiError::Other(Box::new(EthSimulateError::GasLimitReached)).into()
                         )

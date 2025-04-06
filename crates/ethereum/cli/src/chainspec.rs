@@ -10,6 +10,7 @@ pub const SUPPORTED_CHAINS: &[&str] = &["mainnet", "sepolia", "holesky", "dev"];
 /// The value parser matches either a known chain, the path
 /// to a json file, or a json formatted string in-memory. The json needs to be a Genesis struct.
 pub fn chain_value_parser(s: &str) -> eyre::Result<Arc<ChainSpec>, eyre::Error> {
+    println!("🏡 chain_value_parser {:?}", s);
     Ok(match s {
         "mainnet" => MAINNET.clone(),
         "sepolia" => SEPOLIA.clone(),

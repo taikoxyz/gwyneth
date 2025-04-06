@@ -16,7 +16,7 @@ fn main() -> eyre::Result<()> {
         
         let arg = GwynethArgs {
             chain_ids: vec![167010, 167011],
-            datadirs: vec![PathBuf::from("data/reth/gwyneth-167010"), PathBuf::from("data/reth/gwyneth-167011")],
+            datadirs: vec![PathBuf::from("/data/reth/gwyneth-167010"), PathBuf::from("/data/reth/gwyneth-167011")],
             ports: Some(vec![10110, 10210]),
             ..Default::default()
         };
