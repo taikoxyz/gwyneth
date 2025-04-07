@@ -372,6 +372,7 @@ where
 
         let tx_nonce = transaction.nonce();
 
+        // TODO(Brecht): reorg
         // Checks for nonce
         if tx_nonce < account.nonce {
             return TransactionValidationOutcome::Invalid(

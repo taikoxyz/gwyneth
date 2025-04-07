@@ -65,10 +65,12 @@ dashmap = { workspace = true, features = ["inline"] }
 strum.workspace = true
 
 # test-utils
-reth-ethereum-engine-primitives = { workspace = true, optional = true }
+reth-ethereum-engine-primitives.workspace = true
+once_cell.workspace = true
 
 # parallel utils
 rayon.workspace = true
+
 
 [dev-dependencies]
 reth-db = { workspace = true, features = ["test-utils"] }

@@ -64,23 +64,46 @@ impl<E: EngineTypes> EngineApiContext<E> {
     }
 
     /// Sends forkchoice update to the engine api
-    pub async fn update_forkchoice(&self, current_head: B256, new_head: B256) -> eyre::Result<()> {
-        EngineApiClient::<E>::fork_choice_updated_v2(
-            &self.engine_api_client,
-            ForkchoiceState {
-                head_block_hash: new_head,
-                safe_block_hash: current_head,
-                finalized_block_hash: current_head,
-            },
-            None,
-        )
-        .await?;
+    pub async fn update_forkchoice(&self, finalized_head: B256, new_head: B256) -> eyre::Result<()> {
+        let fork_choice_state = ForkchoiceState {
+            head_block_hash: new_head,
+            safe_block_hash: finalized_head,
+            finalized_block_hash: finalized_head,
+        };
+        self.fork_choice_updated_v3_wait(fork_choice_state).await
+    }
+
+    async fn fork_choice_updated_v3_wait(
+        &self,
+        fork_choice_state: ForkchoiceState,
+    ) -> eyre::Result<()> {
+        println!("fork choice: {:?}", fork_choice_state);
+        let mut status =
+            EngineApiClient::<E>::fork_choice_updated_v3(
+                &self.engine_api_client,
+                fork_choice_state,
+                None,
+            )
+            .await?;
+
+        while !status.is_valid() {
+            if status.is_invalid() {
+                println!("Invalid forkchoiceUpdatedV3: {status:?}");
+            }
+            status =
+                EngineApiClient::<E>::fork_choice_updated_v3(
+                    &self.engine_api_client,
+                    fork_choice_state,
+                    None,
+                )
+                .await?;
+        }
         Ok(())
     }
 
     /// Sends forkchoice update to the engine api with a zero finalized hash
     pub async fn update_optimistic_forkchoice(&self, hash: B256) -> eyre::Result<()> {
-        EngineApiClient::<E>::fork_choice_updated_v2(
+        EngineApiClient::<E>::fork_choice_updated_v3(
             &self.engine_api_client,
             ForkchoiceState {
                 head_block_hash: hash,

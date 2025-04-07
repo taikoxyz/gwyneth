@@ -473,17 +473,18 @@ where
         header: &SealedHeader,
         attrs: &mut Option<<N::Engine as PayloadTypes>::PayloadAttributes>,
     ) -> bool {
+        println!("Brecht: on_head_already_canonical: {:?}", self.blockchain.chain_spec().chain.id());
         // On Optimism, the proposers are allowed to reorg their own chain at will.
-        #[cfg(feature = "optimism")]
-        if reth_chainspec::EthChainSpec::is_optimism(&self.blockchain.chain_spec()) {
+        //#[cfg(feature = "optimism")]
+        //if self.blockchain.chain_spec().is_optimism() {
             debug!(
                 target: "consensus::engine",
                 fcu_head_num=?header.number,
                 current_head_num=?head.number,
                 "[Optimism] Allowing beacon reorg to old head"
             );
-            return true
-        }
+            return true;
+        //}
 
         // 2. Client software MAY skip an update of the forkchoice state and MUST NOT begin a
         //    payload build process if `forkchoiceState.headBlockHash` references a `VALID` ancestor
@@ -1614,10 +1615,12 @@ where
         &mut self,
         action: BlockchainTreeAction<N::Engine>,
     ) -> RethResult<EngineEventOutcome> {
+        println!("on_blockchain_tree_action");
         match action {
             BlockchainTreeAction::MakeForkchoiceHeadCanonical { state, attrs, tx } => {
                 let start = Instant::now();
                 // Brecht: reorg
+                println!("on_blockchain_tree_action MakeForkchoiceHeadCanonical");
                 let result = self.blockchain.make_canonical(state.head_block_hash);
                 let elapsed = self.record_make_canonical_latency(start, &result);
                 match self

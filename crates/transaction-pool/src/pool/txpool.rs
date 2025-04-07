@@ -1587,6 +1587,7 @@ impl<T: PoolTransaction> AllTransactions<T> {
         on_chain_balance: U256,
         on_chain_nonce: u64,
     ) -> InsertResult<T> {
+        // TODO(Brecht): reorg
         assert!(on_chain_nonce <= transaction.nonce(), "Invalid transaction");
 
         let mut transaction = self.ensure_valid(transaction, on_chain_nonce)?;

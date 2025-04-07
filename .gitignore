@@ -59,3 +59,5 @@ packages/protocol/broadcast/**
 # Gwyneth static files
 crates/gwyneth/path/**
 =
+packages/protocol/logs/**
+packages/protocol/scripts/memory_drainer_logger/logs/**

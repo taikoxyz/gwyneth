@@ -51,6 +51,7 @@ use std::{
 };
 use strum::IntoEnumIterator;
 use tracing::{info, trace, warn};
+use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 
 /// Alias type for a map that can be queried for block ranges from a transaction
 /// segment respectively. It uses `TxNumber` to represent the transaction end of a static file
@@ -98,6 +99,17 @@ impl<N: NodePrimitives> StaticFileProvider<N> {
     }
 
     /// Creates a new [`StaticFileProvider`] with read-only access.
+    ///
+    /// Set `watch_directory` to `true` to track the most recent changes in static files. Otherwise,
+    /// new data won't be detected or queryable.
+    pub fn read_only(path: impl AsRef<Path>, watch_directory: bool) -> ProviderResult<Self> {
+        let provider = Self::new(path, StaticFileAccess::RO)?;
+
+        if watch_directory {
+            provider.watch_directory();
+        }
+
+        Ok(provider)
     ///
     /// Set `watch_directory` to `true` to track the most recent changes in static files. Otherwise,
     /// new data won't be detected or queryable.

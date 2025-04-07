@@ -510,6 +510,7 @@ pub trait Call: LoadState<Evm: ConfigureEvm<Header = Header>> + SpawnBlocking {
         EthApiError: From<DB::Error>,
     {
         let mut evm = self.evm_config().evm_with_env(db, env);
+        evm.context.evm.env.cfg.xchain = true;
         let res = evm.transact().map_err(Self::Error::from_evm_err)?;
         let (_, env) = evm.into_db_and_env_with_handler_cfg();
         Ok((res, env))
