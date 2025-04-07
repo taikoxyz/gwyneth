@@ -27,6 +27,7 @@ alloy-rpc-types = { workspace = true, features = ["engine"] }
 alloy-primitives.workspace = true
 alloy-eips.workspace = true
 alloy-rlp.workspace = true
+alloy-serde.workspace = true
 alloy-sol-types = { workspace = true, features = ["json"] }
 futures.workspace = true
 revm.workspace = true
@@ -40,6 +41,7 @@ tokio.workspace = true
 thiserror.workspace = true
 serde.workspace = true
 jsonrpsee.workspace = true
+bincode.workspace = true
 
 alloy-consensus.workspace = true
 reth-evm.workspace = true

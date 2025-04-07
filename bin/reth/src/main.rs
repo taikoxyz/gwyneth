@@ -5,7 +5,7 @@ static ALLOC: reth_cli_util::allocator::Allocator = reth_cli_util::allocator::ne
 use std::path::PathBuf;
 
 use jsonrpsee::{core::client::ClientT, rpc_params};
-use gwyneth::{cli::{create_gwyneth_nodes, GwynethArgs}, exex::{GwynethFullNode, L1ParentStates}};
+use gwyneth::{cli::{create_gwyneth_nodes, GwynethArgs}, exex::{GwynethFullNode}};
 use reth::chainspec::EthereumChainSpecParser;
 use reth_node_ethereum::EthereumNode;
 
@@ -27,12 +27,12 @@ fn main() -> eyre::Result<()> {
             builder.config()
         ).await;
         
-        let l1_parents = L1ParentStates::new(&gwyneth_nodes);
+        // let l1_parents = L1ParentStates::new(&gwyneth_nodes);
         
         let handle = builder
             .node(EthereumNode::default())
             .install_exex("Rollup",   |ctx| async move {
-                Ok(gwyneth::exex::Rollup::new(ctx, gwyneth_nodes, l1_parents)?.start())
+                Ok(gwyneth::exex::Rollup::new(ctx, gwyneth_nodes)?.start())
             })
             .launch()
             .await?;

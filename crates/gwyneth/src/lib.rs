@@ -12,6 +12,7 @@ use reth_node_builder::{
     BuilderContext, LaunchNode, Node, NodeAdapter,
     NodeBuilder, NodeComponentsBuilder,
 };
+use reth_primitives::ChainDA;
 use reth_primitives::{transaction::WithEncoded, EthPrimitives, TransactionSigned};
 use reth_provider::{
     StateProviderBox, StateProviderFactory,
@@ -66,19 +67,22 @@ pub mod cli;
 pub mod engine_api;
 pub mod exex;
 
-sol!(RollupContract, "TaikoL1.json");
+sol!(RollupContract, "Gwyneth.json");
 
-/// A Gwyneth payload attributes type.
+/// Gwyneth Payload Attributes
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GwynethPayloadAttributes {
-    /// An inner payload type
+    /// The payload attributes
     #[serde(flatten)]
     pub inner: EthPayloadAttributes,
     /// Transactions is a field for rollups: the transactions list is forced into the block
     #[serde(skip_serializing_if = "Option::is_none")]
     pub transactions: Option<Vec<TransactionSigned>>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Transactions is a field for rollups: the transactions list is forced into the block
+    pub chain_da: ChainDA,
+    /// If set, this sets the exact gas limit the block produced with.
+    #[serde(skip_serializing_if = "Option::is_none", with = "alloy_serde::quantity::opt")]
     pub gas_limit: Option<u64>,
 }
 
@@ -135,7 +139,7 @@ where
 {
     fn build(&self, timestamp: u64) -> GwynethPayloadAttributes {
         let attributes = self.build(timestamp);
-        GwynethPayloadAttributes { inner: attributes, transactions: None, gas_limit: None }
+        GwynethPayloadAttributes { inner: attributes, transactions: None, gas_limit: None, chain_da: Default::default() }
     }
 }
 

@@ -119,7 +119,7 @@ test-utils = [
     "reth-nippy-jar/test-utils",
     "reth-trie/test-utils",
     "reth-chain-state/test-utils",
-    "reth-ethereum-engine-primitives",
+    # "reth-ethereum-engine-primitives",
     "reth-chainspec/test-utils",
     "reth-evm/test-utils",
     "reth-network-p2p/test-utils",

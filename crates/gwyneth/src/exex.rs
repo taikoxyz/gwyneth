@@ -1,25 +1,25 @@
 use std::{
-    marker::PhantomData,
-    sync::{Arc, RwLock},
+    collections::HashMap, marker::PhantomData, sync::{Arc, RwLock}
 };
 
 use alloy_eips::BlockNumHash;
-use alloy_primitives::{address, map::HashMap, Address, B256, U256};
+use alloy_primitives::{address, b256, Address, Bytes, B256, U256};
 use alloy_rlp::Decodable;
 use alloy_rpc_types::engine::PayloadStatusEnum;
 use alloy_sol_types::{sol, SolEventInterface};
 use futures::{StreamExt, TryStreamExt};
 // use reth::{network::NetworkHandle, rpc::eth::EthApi};
 use reth_network::NetworkHandle;
-use reth_primitives::{SealedBlock, SealedBlockWithSenders, SealedHeader, TransactionSigned};
+use reth_primitives::{ChainDA, GwynethDA, SealedBlock, SealedBlockWithSenders, SealedHeader, TransactionSigned};
 use reth_rpc::EthApi;
+use revm::precompile::kzg_point_evaluation::kzg_to_versioned_hash;
 
 use crate::RollupContract::{BlockProposed, RollupContractEvents};
 use crate::{
     engine_api::EngineApiContext, GwynethEngineTypes, GwynethEngineValidatorBuilder, GwynethNode,
     GwynethPayloadAttributes, GwynethPayloadBuilderAttributes,
 };
-use alloy_consensus::Transaction;
+use alloy_consensus::{Blob, SidecarCoder, SimpleCoder, Transaction};
 use reth_chainspec::EthChainSpec;
 use reth_consensus::Consensus;
 use reth_db::DatabaseEnv;
@@ -39,15 +39,14 @@ use reth_node_ethereum::{
 };
 use reth_payload_builder::{EthBuiltPayload, PayloadBuilderHandle};
 use reth_provider::{
-    providers::{BlockchainProvider, BlockchainProvider2},
-    CanonStateSubscriptions, StateProvider, StateProviderFactory,
+    providers::{BlockchainProvider, BlockchainProvider2}, CanonStateSubscriptions, DatabaseProviderFactory, StateProvider, StateProviderFactory, GWYNETH_SYNCED_L1_BLOCK_IDX, GWYNETH_SYNCED_L2_BLOCK_IDX
 };
 use reth_transaction_pool::{
     blobstore::DiskFileBlobStore, CoinbaseTipOrdering, EthPooledTransaction,
     EthTransactionValidator, Pool, TransactionValidationTaskExecutor, TransactionPool,
 };
+sol!(RollupContract, "Gwyneth.json");
 
-sol!(RollupContract, "TaikoL1.json");
 const ROLLUP_CONTRACT_ADDRESS: Address = address!("9fCF7D13d10dEdF17d0f24C62f0cf4ED462f65b7");
 pub const BASE_CHAIN_ID: u64 = 167010;
 const FINALIZATION_PERIOD: u64 = 64;
@@ -170,7 +169,6 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
     pub fn new(
         ctx: ExExContext<Node>,
         nodes: Vec<GwynethFullNode>,
-        l1_parents: L1ParentStates,
     ) -> eyre::Result<Self> {
         let mut engine_apis = Vec::new();
         let mut l2_block_info = HashMap::new();
@@ -193,10 +191,10 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                     engine_apis.push(engine_api);
                 }
             }
-            let chain_id = node.chain_spec().chain().id();
+
             let mut l2_block_indices = GWYNETH_SYNCED_L2_BLOCK_IDX.lock().unwrap();
-            l2_block_indices.insert(chain_id, 0);
-            l2_block_info.insert(chain_id, (0u64, GENESIS_HASH));
+            l2_block_indices.insert(node.chain_id(), 0);
+            l2_block_info.insert(node.chain_id(), (0u64, GENESIS_HASH));
         }
         let l1_finalized_block = ctx.head.number;
         let mut l1_to_l2 = HashMap::new();
@@ -221,10 +219,6 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
 
                 println!("REORG!!! Reverting to {}", target_l1_block);
 
-                // for i in 0..self.nodes.len() {
-                //     self.revert(i, target_l1_block).await?;
-                // }
-
                 // Update the sync data
                 unsafe {
                     GWYNETH_SYNCED_L1_BLOCK_IDX = target_l1_block;
@@ -244,7 +238,7 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                 }
                 
 
-                for (i, node) in self.nodes.iter().enumerate() {
+                for i in 0..self.nodes.len() {
                     self.commit(&committed_chain, i).await?;
                 }
                 // Update the sync data
@@ -268,16 +262,17 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                 block: ultra_block,
             }) = event
             {
-                println!("[reth] l2 {} l1 block_number: {:?}", node.chain_id(), block_number);
-                let transactions: Vec<TransactionSigned> = decode_transactions(&meta.txList);
-                println!("tx_list 🎉 : {:?}", transactions.len());
 
                 let (da, tx_list) = bincode::deserialize::<(GwynethDA, Vec<u8>)>(&ultra_block.da)
                 .unwrap_or_else(|err| {
                     panic!("DA can't be decoded: {}", err);
                 });
 
+                let all_transactions = decode_transactions(&tx_list);
                 let node_chain_id = self.get_chain_id(node_idx);
+                println!("tx_list 🎉 : {:?}", all_transactions.len());
+
+                
                 let chain_da = da.chain_das.get(&node_chain_id);
                 if chain_da.is_none() {
                     println!("No block for {}", node_chain_id);
@@ -302,23 +297,20 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                         withdrawals: Some(vec![]),
                         parent_beacon_block_root: block.parent_beacon_block_root,
                     },
-                    transactions: Some(filtered_transactions.clone()),
+                    transactions: Some(all_transactions.clone()),
                     chain_da: chain_da.clone(),
                     gas_limit: None,
                 };
 
-                let l1_state_provider: Box<dyn StateProvider> = Box::new(
-                    self.ctx
-                        .provider()
-                        .history_by_block_number(block_number.try_into().unwrap())
-                        .unwrap(),
-                );
+                let l1_state_provider = self.ctx.provider().history_by_block_number(block.number).unwrap();
                 let l1_block_number = block.number;
 
 
                 let mut builder_attrs =
                     GwynethPayloadBuilderAttributes::try_new(B256::ZERO, attrs, 0).unwrap();
-                builder_attrs.providers.insert(self.ctx.config.chain.chain().id(), Arc::new(l1_state_provider));
+                let mut sync_provider = HashMap::new();
+                sync_provider.insert(self.ctx.config.chain.chain().id(), Arc::new(l1_state_provider));
+                builder_attrs.sync_provider = Some(sync_provider);
 
                 let payload_id = builder_attrs.inner.payload_id();
                 let parrent_beacon_block_root =
@@ -331,11 +323,12 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
                 );
 
                 // trigger new payload building draining the pool
-                self.nodes[node_idx].payload_builder.new_payload(builder_attrs).await.unwrap();
+                let node = &self.nodes[node_idx];
+                node.payload_builder().send_new_payload(builder_attrs).await.unwrap();
 
                 // wait for the payload builder to have finished building
                 let mut payload =
-                    EthBuiltPayload::new(payload_id, SealedBlock::default(), U256::ZERO);
+                    EthBuiltPayload::new(payload_id, Arc::new(SealedBlock::default()), U256::ZERO, None, None);
                 loop {
                     let result = node.payload_builder().best_payload(payload_id).await;
 
@@ -429,7 +422,7 @@ impl<Node: reth_node_api::FullNodeComponents> Rollup<Node> {
 
     fn get_chain_id(&self, node_idx: usize) -> u64 {
         //BASE_CHAIN_ID + (node_idx as u64)
-        self.nodes[node_idx].chain_spec().chain().id()
+        self.nodes[node_idx].chain_id()
     }
 }
 
@@ -490,7 +483,7 @@ fn get_blob_data<Pool: TransactionPool>(pool: &Pool, tx: &TransactionSigned, blo
         // Convert blob KZG commitments to versioned hashes
         .map(|(blob, commitment)| (blob, kzg_to_versioned_hash(commitment.as_slice())))
         // Filter only blobs that are present in the block data
-        .filter(|(_, hash)| blob_hashes.contains(hash))
+        .filter(|(_, hash)| blob_hashes.contains(hash.into()))
         .map(|(blob, _)| Blob::from(*blob))
         .collect::<Vec<_>>();
     if blobs.len() != blob_hashes.len() {
