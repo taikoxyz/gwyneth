@@ -115,6 +115,8 @@ pub struct GwynethPayloadBuilderAttributes {
     /// Decoded transactions and the original EIP-2718 encoded bytes as received in the payload
     /// attributes.
     pub transactions: Vec<WithEncoded<TransactionSigned>>,
+    /// chain DA
+    pub chain_da: ChainDA,
     /// The gas limit for the generated payload
     pub gas_limit: Option<u64>,
     /// Cross-chain provider for L1
@@ -126,6 +128,7 @@ impl PartialEq for GwynethPayloadBuilderAttributes {
         self.inner == other.inner
             && self.transactions == other.transactions
             && self.gas_limit == other.gas_limit
+            && self.chain_da == other.chain_da
         // && self.sync_provider == other.sync_provider
     }
 }
@@ -168,6 +171,7 @@ impl PayloadBuilderAttributes for GwynethPayloadBuilderAttributes {
             transactions,
             gas_limit: attributes.gas_limit,
             sync_provider: None,
+            chain_da: attributes.chain_da,
         })
     }
 

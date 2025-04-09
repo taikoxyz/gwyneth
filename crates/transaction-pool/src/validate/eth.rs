@@ -362,12 +362,13 @@ where
                 false
             };
 
-            if !is_eip7702 {
-                return TransactionValidationOutcome::Invalid(
-                    transaction,
-                    InvalidTransactionError::SignerAccountHasBytecode.into(),
-                )
-            }
+            // TODO(Cecilia): use the real path for EIP-7702
+            // if !is_eip7702 {
+            //     return TransactionValidationOutcome::Invalid(
+            //         transaction,
+            //         InvalidTransactionError::SignerAccountHasBytecode.into(),
+            //     )
+            // }
         }
 
         let tx_nonce = transaction.nonce();

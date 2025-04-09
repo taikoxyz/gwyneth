@@ -473,7 +473,7 @@ where
         header: &SealedHeader,
         attrs: &mut Option<<N::Engine as PayloadTypes>::PayloadAttributes>,
     ) -> bool {
-        println!("Brecht: on_head_already_canonical: {:?}", self.blockchain.chain_spec());
+        println!("Brecht: on_head_already_canonical: {:?}", header.number);
         // On Optimism, the proposers are allowed to reorg their own chain at will.
         //#[cfg(feature = "optimism")]
         //if self.blockchain.chain_spec().is_optimism() {
