@@ -40,7 +40,7 @@ contract Gwyneth is IGwyneth {
         payable
         override
     {
-        require(_block.parentL1BlockHash == blockhash(block.number - 1), "included in an unexpected L1 block");
+        // require(_block.parentL1BlockHash == blockhash(block.number - 1), "included in an unexpected L1 block");
         //require(_block.parentUltraHash == ultraHash, "parent ULTRA hash mismatch");
 
         // for (uint i = 0; i < _block.blobHashes.length; i++) {

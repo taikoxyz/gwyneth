@@ -123,11 +123,6 @@ contract DeployL1Locally is DeployCapability {
 
     //     AddressManager(rollupAddressManager).transferOwnership(contractOwner);
     //     console2.log("** rollupAddressManager ownership transferred to:", contractOwner);
-
-        // Sending 10 ETH to Alice
-        address payable admin = payable(0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266);
-        (bool success, ) = admin.call{value: 10 ether}("");
-        require(success, "Failed to send Ether");
     }
 
     function deploySharedContracts(address owner) internal returns (address sharedAddressManager) {
