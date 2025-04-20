@@ -31,11 +31,14 @@ reth-rpc-eth-types.workspace = true
 reth-rpc-server-types.workspace = true
 reth-network-api.workspace = true
 reth-trie.workspace = true
+reth-rpc-layer.workspace = true
+reth-db.workspace = true
 
 # ethereum
 alloy-dyn-abi = { workspace = true, features = ["eip712"] }
 alloy-network.workspace = true
 alloy-json-rpc.workspace = true
+alloy-rpc-types-eth.workspace = true
 
 # rpc
 jsonrpsee = { workspace = true, features = ["server", "macros"] }

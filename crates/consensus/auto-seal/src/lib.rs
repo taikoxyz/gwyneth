@@ -270,7 +270,7 @@ impl StorageInner {
     ) -> Header {
         // check previous block for base fee
         let base_fee_per_gas = self.headers.get(&self.best_block).and_then(|parent| {
-            parent.next_block_base_fee(chain_spec.base_fee_params_at_timestamp(timestamp))
+            parent.next_block_base_fee(chain_spec.base_fee_params_at_timestamp(timestamp), timestamp)
         });
 
         let blob_gas_used = if chain_spec.is_cancun_active_at_timestamp(timestamp) {

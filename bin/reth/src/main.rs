@@ -5,11 +5,11 @@
 static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 use gwyneth::{engine_api::RpcServerArgsExEx, GwynethNode};
-use reth::args::{DiscoveryArgs, NetworkArgs, RpcServerArgs};
+use reth::{args::{DiscoveryArgs, NetworkArgs, RpcServerArgs}, forwarder::start_forwarder};
 use reth_chainspec::ChainSpecBuilder;
 use reth_node_builder::{NodeBuilder, NodeConfig, NodeHandle};
 use reth_node_ethereum::EthereumNode;
-use reth_provider::NODES;
+use reth_provider::{NODES, NODES_RPC};
 use reth_tasks::TaskManager;
 
 const BASE_CHAIN_ID: u64 = gwyneth::exex::BASE_CHAIN_ID; // Base chain ID for L2s
@@ -29,7 +29,7 @@ fn main() -> eyre::Result<()> {
         for i in 0..NUM_L2_CHAINS {
             let chain_id = BASE_CHAIN_ID + i; // Increment by 1 for each L2
 
-            let chain_spec = ChainSpecBuilder::default()
+            let mut chain_spec = ChainSpecBuilder::default()
                 .chain(chain_id.into())
                 .genesis(
                     serde_json::from_str(include_str!(
@@ -39,6 +39,11 @@ fn main() -> eyre::Result<()> {
                 )
                 .cancun_activated()
                 .build();
+
+            chain_spec.parent_chain_id = Some(builder.config().chain.chain().id());
+            println!("parent chain id: {:?}", chain_spec.parent_chain_id);
+
+            chain_spec.genesis.base_fee_per_gas = Some(0);
 
             let node_config = NodeConfig::test()
                 .with_chain(chain_spec.clone())
@@ -59,7 +64,10 @@ fn main() -> eyre::Result<()> {
                     .launch()
                     .await?;
 
+                    //gwyneth_node.engine_http_client()
+
             NODES.lock().unwrap().insert(chain_id, gwyneth_node.provider.clone());
+            NODES_RPC.lock().unwrap().insert(chain_id, gwyneth_node.auth_server_handle().http_client());
             gwyneth_nodes.push(gwyneth_node);
         }
 
@@ -73,6 +81,9 @@ fn main() -> eyre::Result<()> {
 
 
         NODES.lock().unwrap().insert(handle.node.chain_spec().chain.id(), handle.node.provider.clone());
+        NODES_RPC.lock().unwrap().insert(handle.node.chain_spec().chain.id(), handle.node.auth_server_handle().http_client());
+
+        //let res = start_forwarder().await;
 
         handle.wait_for_node_exit().await
     })
@@ -88,5 +99,11 @@ mod tests {
     struct CommandParser<T: Args> {
         #[command(flatten)]
         args: T,
+    }
+
+    #[tokio::test]
+    async fn run_forwarder() {
+        println!("Brecht");
+        let rest = start_forwarder().await;
     }
 }

@@ -354,7 +354,7 @@ where
         requests_root: None,
     };
 
-    //println!("header: {:?}", header);
+    println!("header: {:?}", header);
 
     //println!("[{}-{}] receipts: {:?}", chain_spec.chain().id(), header.number, state_diff.receipts);
 

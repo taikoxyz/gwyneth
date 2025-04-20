@@ -100,6 +100,7 @@ pub trait LoadPendingBlock: EthApiTypes {
 
             latest_header.base_fee_per_gas = latest_header.next_block_base_fee(
                 chain_spec.base_fee_params_at_timestamp(latest_header.timestamp),
+                latest_header.timestamp,
             );
 
             // update excess blob gas consumed above target

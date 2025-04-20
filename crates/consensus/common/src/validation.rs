@@ -235,7 +235,7 @@ pub fn validate_against_parent_eip1559_base_fee(
                 // This BaseFeeMissing will not happen as previous blocks are checked to have
                 // them.
                 parent
-                    .next_block_base_fee(chain_spec.base_fee_params_at_timestamp(header.timestamp))
+                    .next_block_base_fee(chain_spec.base_fee_params_at_timestamp(header.timestamp), header.timestamp)
                     .ok_or(ConsensusError::BaseFeeMissing)?
             };
         if expected_base_fee != base_fee {

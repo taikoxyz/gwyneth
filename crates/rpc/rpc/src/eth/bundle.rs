@@ -134,6 +134,7 @@ where
                 LoadPendingBlock::provider(&self.inner.eth_api)
                     .chain_spec()
                     .base_fee_params_at_block(parent_block),
+                    block_env.timestamp.as_limbs()[0],
             ) {
                 block_env.basefee = U256::from(base_fee);
             }

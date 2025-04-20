@@ -12,6 +12,11 @@ use reth_revm::{
 use reth_storage_api::StateProvider;
 use reth_trie::HashedStorage;
 use revm_primitives::ChainAddress;
+use reth_provider::DatabaseProviderRO;
+use reth_provider::DatabaseProvider;
+
+use reth_db::mdbx::tx::Tx;
+use reth_db::mdbx::RO;
 
 /// Helper alias type for the state's [`CacheDB`]
 pub type StateCacheDb<'a> = CacheDB<SyncStateProviderDatabase<StateProviderTraitObjWrapper<'a>>>;
@@ -19,7 +24,8 @@ pub type StateCacheDb<'a> = CacheDB<SyncStateProviderDatabase<StateProviderTrait
 /// Hack to get around 'higher-ranked lifetime error', see
 /// <https://github.com/rust-lang/rust/issues/100013>
 #[allow(missing_debug_implementations)]
-pub struct StateProviderTraitObjWrapper<'a>(pub &'a dyn StateProvider);
+pub struct StateProviderTraitObjWrapper<'a>(pub &'a dyn StateProvider, pub Option<DatabaseProvider<Tx<RO>>>);
+//pub struct StateProviderTraitObjWrapper<'a, DB: reth_db_api::database::Database>(pub &'a dyn StateProvider, pub Option<DatabaseProviderRO<DB>>);
 
 impl<'a> reth_storage_api::StateRootProvider for StateProviderTraitObjWrapper<'a> {
     fn state_root(

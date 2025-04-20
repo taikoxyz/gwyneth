@@ -18,7 +18,7 @@ use reth_rpc_types::{
 };
 use reth_transaction_pool::{PoolTransaction, TransactionPool};
 use tracing::trace;
-use reth_provider::{GWYNETH_SYNCED_L1_BLOCK_IDX, GWYNETH_SYNCED_L2_BLOCK_IDX};
+use reth_provider::{GWYNETH_SYNCED_L1_BLOCK_IDX, GWYNETH_SYNCED_L2_BLOCK_IDX, NODES_RPC};
 
 use crate::{
     helpers::{
@@ -26,6 +26,13 @@ use crate::{
     },
     RpcBlock, RpcTransaction,
 };
+
+use jsonrpsee::{
+    core::client::ClientT,
+    http_client::{transport::HttpBackend, HttpClient},
+};
+
+//pub static mut ACTIVE_CHAIN_ID: u64 = 0;
 
 /// Helper trait, unifies functionality that must be supported to implement all RPC methods for
 /// server.
@@ -367,6 +374,18 @@ pub trait EthApi<T: RpcObject, B: RpcObject> {
     /// Returns the L2 block to which this L2 is synced (but perhaps not yet fully processed)
     #[method(name = "getSyncedL2BlockIdx")]
     async fn get_synced_l2_block_idx(&self) -> RpcResult<U64>;
+
+    /// Returns the parent chain id of this chain (if it exists, else 0)
+    #[method(name = "getParentChainId")]
+    async fn get_parent_chain_id(&self) -> RpcResult<U64>;
+
+    // Returns the current active chain id
+    // #[method(name = "getActiveChainId")]
+    // async fn get_active_chain_id(&self) -> RpcResult<U64>;
+
+    // Sets the currently active chain id
+    // #[method(name = "setActiveChainId")]
+    // async fn set_active_chain_id(&self, chain_id: U64) -> RpcResult<bool>;
 }
 
 #[async_trait::async_trait]
@@ -648,6 +667,39 @@ where
     /// Handler for: `eth_getCode`
     async fn get_code(&self, address: Address, block_number: Option<BlockId>) -> RpcResult<Bytes> {
         trace!(target: "rpc::eth", ?address, ?block_number, "Serving eth_getCode");
+
+        // let chain_id = EthApiSpec::chain_id(self).into_limbs()[0];
+
+        // let active_chain_id = unsafe {
+        //     ACTIVE_CHAIN_ID
+        // };
+
+        // println!("get_code({}): active_chain_id: {:?}", address, active_chain_id);
+
+        // if active_chain_id != 0 && active_chain_id != chain_id {
+
+        //     println!("x get code for chain {:?}", active_chain_id);
+
+        //     unsafe {
+        //         let rpcs = NODES_RPC.lock().unwrap().clone();
+        //         let rpc = rpcs.get(&chain_id).unwrap();
+
+        //         //rpc.get_account(address, block)
+
+        //         let res2: Bytes = <HttpClient<reth_rpc_layer::AuthClientService<HttpBackend>> as EthApiClient<alloy_rpc_types_eth::Transaction, alloy_rpc_types_eth::Block>>::get_code(
+        //             &rpc,
+        //             address,
+        //             block_number
+        //         )
+        //         .await
+        //         .map_err(|e| internal_rpc_err("unimplemented"))?;
+
+        //         return Ok(res2.clone());
+
+        //         //rpc.get_account(address, block).await.map_err(|e| internal_rpc_err("unimplemented"))?
+        //     };
+        // }
+
         Ok(EthState::get_code(self, address, block_number).await?)
     }
 
@@ -741,6 +793,35 @@ where
         address: Address,
         block: BlockId,
     ) -> RpcResult<Option<reth_rpc_types::Account>> {
+        // let chain_id = EthApiSpec::chain_id(self).into_limbs()[0];
+
+        // let active_chain_id = unsafe {
+        //     ACTIVE_CHAIN_ID
+        // };
+
+        // println!("get_account({}): active_chain_id: {:?}", address, active_chain_id);
+
+        // if active_chain_id != 0 && active_chain_id != chain_id {
+        //     unsafe {
+        //         let rpcs = NODES_RPC.lock().unwrap().clone();
+        //         let rpc = rpcs.get(&chain_id).unwrap();
+
+        //         //rpc.get_account(address, block)
+
+        //         let res2: Option<reth_rpc_types::Account> = <HttpClient<reth_rpc_layer::AuthClientService<HttpBackend>> as EthApiClient<alloy_rpc_types_eth::Transaction, alloy_rpc_types_eth::Block>>::get_account(
+        //             &rpc,
+        //             address,
+        //             block
+        //         )
+        //         .await
+        //         .map_err(|e| internal_rpc_err("unimplemented"))?;
+
+        //         return Ok(res2.clone());
+
+        //         //rpc.get_account(address, block).await.map_err(|e| internal_rpc_err("unimplemented"))?
+        //     };
+        // }
+
         trace!(target: "rpc::eth", "Serving eth_getAccount");
         Ok(EthState::get_account(self, address, block).await?)
     }
@@ -862,4 +943,31 @@ where
         };
         Ok(U64::from(l2_block_idx))
     }
+
+    /// Handler for: `eth_getParentChainId`
+    async fn get_parent_chain_id(&self) -> RpcResult<U64> {
+        println!("API PRC: parent chain id: {:?}", self.chain_spec().parent_chain_id);
+        let chain_id = EthApiSpec::chain_id(self).into_limbs()[0];
+        Ok(U64::from(self.chain_spec().parent_chain_id.unwrap_or(chain_id)))
+    }
+
+    // Handler for: `eth_getActiveChainId`
+    // async fn get_active_chain_id(&self) -> RpcResult<U64> {
+    //     let active_chain_id = unsafe {
+    //         ACTIVE_CHAIN_ID
+    //     };
+
+    //     println!("API PRC: active_chain_id: {:?}", active_chain_id);
+    //     Ok(U64::from(active_chain_id))
+    // }
+
+    // Handler for: `eth_setActiveChainId`
+    // async fn set_active_chain_id(&self, chain_id: U64) -> RpcResult<bool> {
+    //     unsafe {
+    //         ACTIVE_CHAIN_ID = chain_id.as_limbs()[0];
+    //     };
+
+    //     println!("API PRC: set active_chain_id: {:?}", chain_id);
+    //     Ok(true)
+    // }
 }

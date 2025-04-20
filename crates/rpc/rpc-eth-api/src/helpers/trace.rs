@@ -346,7 +346,7 @@ pub trait Trace: LoadState {
                 let state = this.state_at_block_id(state_at.into())?;
                 let mut db = CacheDB::new(SyncStateProviderDatabase::new(
                     Some(cfg.chain_id),
-                    StateProviderDatabase::new(StateProviderTraitObjWrapper(&state)),
+                    StateProviderDatabase::new(StateProviderTraitObjWrapper(&state, None)),
                 ));
 
                 while let Some((tx_info, tx)) = transactions.next() {

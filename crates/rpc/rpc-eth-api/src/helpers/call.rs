@@ -48,6 +48,19 @@ use tracing::trace;
 
 use super::{LoadBlock, LoadPendingBlock, LoadState, LoadTransaction, SpawnBlocking, Trace};
 
+use std::sync::LazyLock;
+use std::sync::Mutex;
+
+use reth_provider::DatabaseProviderRO;
+
+use reth_provider::DatabaseProvider;
+use reth_db::mdbx::tx::Tx;
+use reth_db::mdbx::RO;
+
+use reth_db::database;
+
+pub static PROVIDERS: LazyLock<Mutex<HashMap<u64, DatabaseProvider<Tx<RO>>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
 /// Execution related functions for the [`EthApiServer`](crate::EthApiServer) trait in
 /// the `eth_` namespace.
 pub trait EthCall: Call + LoadPendingBlock {
@@ -284,12 +297,12 @@ pub trait EthCall: Call + LoadPendingBlock {
         let access_list = inspector.into_access_list();
         env.tx.access_list = access_list.to_vec();
         match result.result {
-            ExecutionResult::Halt { reason, gas_used } => {
+            ExecutionResult::Halt { reason, gas_used, gas_used_per_chain } => {
                 let error =
                     Some(RpcInvalidTransactionError::halt(reason, env.tx.gas_limit).to_string());
                 return Ok(AccessListResult { access_list, gas_used: U256::from(gas_used), error })
             }
-            ExecutionResult::Revert { output, gas_used } => {
+            ExecutionResult::Revert { output, gas_used, gas_used_per_chain } => {
                 let error = Some(RevertError::new(output).to_string());
                 return Ok(AccessListResult { access_list, gas_used: U256::from(gas_used), error })
             }
@@ -299,12 +312,12 @@ pub trait EthCall: Call + LoadPendingBlock {
         // transact again to get the exact gas used
         let (result, env) = self.transact(&mut db, env)?;
         let res = match result.result {
-            ExecutionResult::Halt { reason, gas_used } => {
+            ExecutionResult::Halt { reason, gas_used, gas_used_per_chain } => {
                 let error =
                     Some(RpcInvalidTransactionError::halt(reason, env.tx.gas_limit).to_string());
                 AccessListResult { access_list, gas_used: U256::from(gas_used), error }
             }
-            ExecutionResult::Revert { output, gas_used } => {
+            ExecutionResult::Revert { output, gas_used, gas_used_per_chain } => {
                 let error = Some(RevertError::new(output).to_string());
                 AccessListResult { access_list, gas_used: U256::from(gas_used), error }
             }
@@ -335,7 +348,7 @@ pub trait Call: LoadState + SpawnBlocking {
         F: FnOnce(StateProviderTraitObjWrapper<'_>) -> Result<R, Self::Error>,
     {
         let state = self.state_at_block_id(at)?;
-        f(StateProviderTraitObjWrapper(&state))
+        f(StateProviderTraitObjWrapper(&state, None))
     }
 
     /// Executes the [`EnvWithHandlerCfg`] against the given [Database] without committing state
@@ -349,8 +362,10 @@ pub trait Call: LoadState + SpawnBlocking {
         DB: SyncDatabase,
         EthApiError: From<DB::Error>,
     {
+        println!("transact");
         let mut evm = self.evm_config().evm_with_env(db, env);
         evm.context.evm.env.cfg.xchain = true;
+        evm.context.evm.env.cfg.parent_chain_id = Some(160010);
         let res = evm.transact().map_err(Self::Error::from_evm_err)?;
         let (_, env) = evm.into_db_and_env_with_handler_cfg();
         Ok((res, env))
@@ -366,6 +381,7 @@ pub trait Call: LoadState + SpawnBlocking {
     where
         Self: LoadPendingBlock,
     {
+        println!("transact_call_at");
         let this = self.clone();
         self.spawn_with_call_at(request, at, overrides, move |db, env| this.transact(db, env))
     }
@@ -382,7 +398,7 @@ pub trait Call: LoadState + SpawnBlocking {
     {
         self.spawn_tracing(move |this| {
             let state = this.state_at_block_id(at)?;
-            f(StateProviderTraitObjWrapper(&state))
+            f(StateProviderTraitObjWrapper(&state, None))
         })
     }
 
@@ -409,11 +425,30 @@ pub trait Call: LoadState + SpawnBlocking {
             let (cfg, block_env, at) = self.evm_env_at(at).await?;
             let this = self.clone();
             self.spawn_tracing(move |_| {
-                let state = this.state_at_block_id(at)?;
-                let mut db = CacheDB::new(SyncStateProviderDatabase::new(
-                    Some(cfg.chain_id),
-                    StateProviderDatabase::new(StateProviderTraitObjWrapper(&state)),
-                ));
+                let providers = NODES.lock().unwrap();
+                let mut state_providers = Vec::new();
+                let mut provider_data = Vec::new();
+
+                // First collect all providers
+                for (&chain_id, chain_provider) in providers.iter() {
+                    let state_provider = chain_provider.database_provider_ro().unwrap();
+                    let last_block_number = state_provider.last_block_number().unwrap();
+                    let state_provider_latest = state_provider.state_provider_by_block_number(last_block_number).unwrap();
+                    state_providers.push(state_provider_latest);
+                    provider_data.push(chain_id);
+                }
+
+                let mut super_db = SyncStateProviderDatabase::default();
+
+                // Add providers to database using references to stored providers
+                for (idx, &chain_id) in provider_data.iter().enumerate() {
+                    super_db.add_db(
+                        chain_id,
+                        StateProviderDatabase::new(StateProviderTraitObjWrapper(&state_providers[idx], None))
+                    );
+                }
+
+                let mut db = CacheDB::new(super_db);
 
                 let env = this.prepare_call_env(
                     cfg,
@@ -542,6 +577,7 @@ pub trait Call: LoadState + SpawnBlocking {
     where
         Self: LoadPendingBlock,
     {
+        println!("estimate gas");
         async move {
             let (cfg, block_env, at) = self.evm_env_at(at).await?;
 
@@ -601,6 +637,8 @@ pub trait Call: LoadState + SpawnBlocking {
 
         // Configure the evm env
         cfg.xchain = true;
+        cfg.parent_chain_id = self.provider().chain_spec().parent_chain_id;
+
         let mut env = self.build_call_evm_env(cfg, block, request)?;
         // Brecht
         //let boxed: Box<dyn StateProvider> = Box::new(StateProviderDatabase::new(state));
@@ -609,7 +647,7 @@ pub trait Call: LoadState + SpawnBlocking {
         //    boxed,
         //);
 
-        let mut super_db = SyncStateProviderDatabase { 0: HashMap::default() };
+        let mut super_db = SyncStateProviderDatabase::default();
 
         let providers = NODES.lock().unwrap();
         for (&chain_id, chain_provider) in providers.iter() {
@@ -699,7 +737,7 @@ pub trait Call: LoadState + SpawnBlocking {
 
         let gas_refund = match res.result {
             ExecutionResult::Success { gas_refunded, .. } => gas_refunded,
-            ExecutionResult::Halt { reason, gas_used } => {
+            ExecutionResult::Halt { reason, gas_used, gas_used_per_chain } => {
                 // here we don't check for invalid opcode because already executed with highest gas
                 // limit
                 return Err(RpcInvalidTransactionError::halt(reason, gas_used).into_eth_err())
@@ -995,7 +1033,7 @@ pub trait Call: LoadState + SpawnBlocking {
     ///  - `disable_eip3607` is set to `true`
     ///  - `disable_base_fee` is set to `true`
     ///  - `nonce` is set to `None`
-    ///
+    ///     ///
     /// Additionally, the block gas limit so that higher tx gas limits can be used in `eth_call`.
     ///  - `disable_block_gas_limit` is set to `true`
     fn prepare_call_env<DB>(
@@ -1011,6 +1049,8 @@ pub trait Call: LoadState + SpawnBlocking {
         DB: SyncDatabaseRef,
         EthApiError: From<<DB as SyncDatabaseRef>::Error>,
     {
+        println!("prepare_call_env");
+
         let chain_id = cfg.chain_id;
         // we want to disable this in eth_call, since this is common practice used by other node
         // impls and providers <https://github.com/foundry-rs/foundry/issues/4388>

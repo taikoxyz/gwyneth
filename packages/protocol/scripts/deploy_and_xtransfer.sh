@@ -48,7 +48,9 @@ echo -e "${GREEN}Deploying to L1...${NC}"
 L1_OUTPUT=$(forge script --rpc-url http://127.0.0.1:32002 scripts/DeployXERC20.s.sol -vvvv --broadcast --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --legacy)
 
 # Extract the contract address - improved pattern matching
-CONTRACT_ADDRESS=$(echo "$L1_OUTPUT" | grep -o '0x[a-fA-F0-9]\{40\}' | head -n 1)
+CONTRACT_ADDRESS=$(echo "$L1_OUTPUT" | grep -o '@0x[a-fA-F0-9]\{40\}' | head -n 1 | sed 's/^@//')
+
+echo $CONTRACT_ADDRESS
 
 if [ -z "$CONTRACT_ADDRESS" ]; then
     echo -e "${RED}Failed to extract contract address from deployment output${NC}"
@@ -60,7 +62,7 @@ echo -e "${GREEN}Extracted contract address: $CONTRACT_ADDRESS${NC}"
 if [ $? -eq 0 ]; then
     # Check if contract is deployed on L1
     if check_contract_deployment "http://127.0.0.1:32002" "$CONTRACT_ADDRESS"; then
-        echo -e "${GREEN}Verifying L2A contract...${NC}"
+        echo -e "${GREEN}Verifying L1 contract...${NC}"
         # forge verify-contract "$CONTRACT_ADDRESS" "contracts/examples/xERC20.sol:xERC20" --watch --verifier-url "http://localhost:64001/api" --verifier blockscout --chain-id 160010 --libraries contracts/gwyneth/EVM.sol:EVM:0x5FbDB2315678afecb367f032d93F642f64180aa3
     else
         echo -e "${RED}L1 deployment verification failed. Stopping.${NC}"
@@ -77,7 +79,9 @@ echo -e "${GREEN}Deploying to L2A...${NC}"
 L2A_OUTPUT=$(forge script --rpc-url http://127.0.0.1:32005 scripts/DeployXERC20.s.sol -vvvv --broadcast --private-key 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 --legacy)
 
 # Extract the contract address - improved pattern matching
-CONTRACT_ADDRESS=$(echo "$L2A_OUTPUT" | grep -o '0x[a-fA-F0-9]\{40\}' | head -n 1)
+CONTRACT_ADDRESS=$(echo "$L2A_OUTPUT" | grep -o '@0x[a-fA-F0-9]\{40\}' | head -n 1 | sed 's/^@//')
+
+echo $CONTRACT_ADDRESS
 
 if [ -z "$CONTRACT_ADDRESS" ]; then
     echo -e "${RED}Failed to extract contract address from deployment output${NC}"
@@ -99,7 +103,6 @@ else
     echo -e "${RED}L2A deployment failed. Stopping.${NC}"
     exit 1
 fi
-
 
 
 echo -e "${GREEN}Deploying to L2B...${NC}"

@@ -54,6 +54,7 @@ pub static MAINNET: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
         base_fee_params: BaseFeeParamsKind::Constant(BaseFeeParams::ethereum()),
         max_gas_limit: ETHEREUM_BLOCK_GAS_LIMIT,
         prune_delete_limit: 20000,
+        parent_chain_id: None,
     };
     spec.genesis.config.dao_fork_support = true;
     spec.into()
@@ -78,6 +79,7 @@ pub static SEPOLIA: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
         base_fee_params: BaseFeeParamsKind::Constant(BaseFeeParams::ethereum()),
         max_gas_limit: ETHEREUM_BLOCK_GAS_LIMIT,
         prune_delete_limit: 10000,
+        parent_chain_id: None,
     };
     spec.genesis.config.dao_fork_support = true;
     spec.into()
@@ -100,6 +102,7 @@ pub static HOLESKY: Lazy<Arc<ChainSpec>> = Lazy::new(|| {
         base_fee_params: BaseFeeParamsKind::Constant(BaseFeeParams::ethereum()),
         max_gas_limit: ETHEREUM_BLOCK_GAS_LIMIT,
         prune_delete_limit: 10000,
+        parent_chain_id: None,
     };
     spec.genesis.config.dao_fork_support = true;
     spec.into()
@@ -205,6 +208,9 @@ pub struct ChainSpec {
 
     /// The delete limit for pruner, per run.
     pub prune_delete_limit: usize,
+
+    /// The parent chain id
+    pub parent_chain_id: Option<u64>,
 }
 
 impl Default for ChainSpec {
@@ -219,6 +225,7 @@ impl Default for ChainSpec {
             base_fee_params: BaseFeeParamsKind::Constant(BaseFeeParams::ethereum()),
             max_gas_limit: ETHEREUM_BLOCK_GAS_LIMIT,
             prune_delete_limit: MAINNET.prune_delete_limit,
+            parent_chain_id: None,
         }
     }
 }

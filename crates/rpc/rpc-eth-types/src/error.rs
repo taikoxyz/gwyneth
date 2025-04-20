@@ -689,7 +689,7 @@ pub fn ensure_success(result: ExecutionResult) -> EthResult<Bytes> {
         ExecutionResult::Revert { output, .. } => {
             Err(RpcInvalidTransactionError::Revert(RevertError::new(output)).into())
         }
-        ExecutionResult::Halt { reason, gas_used } => {
+        ExecutionResult::Halt { reason, gas_used, gas_used_per_chain } => {
             Err(RpcInvalidTransactionError::halt(reason, gas_used).into())
         }
     }

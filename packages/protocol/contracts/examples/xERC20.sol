@@ -27,7 +27,7 @@ contract xERC20 is GwynethContract {
     }
 
     function transfer(address to, uint256 value) public returns (uint256) {
-        require(balanceOf[msg.sender] >= value, "Insufficient balance");
+        require(balanceOf[msg.sender] >= value, "xERC20::transfer: Insufficient balance");
         balanceOf[msg.sender] -= value;
         balanceOf[to] += value;
         emit Transfer(msg.sender, to, value);
@@ -85,9 +85,9 @@ contract xERC20 is GwynethContract {
     }
 
     function transferFrom(address from, address to, uint256 value) public returns (uint256) {
-        require(balanceOf[from] >= value, "Insufficient balance");
+        require(balanceOf[from] >= value, "xERC20::transferFrom: Insufficient balance");
         if (from != msg.sender) {
-            require(allowance[from][msg.sender] >= value, "Allowance exceeded");
+            require(allowance[from][msg.sender] >= value, "xERC20::transferFrom: Allowance exceeded");
         }
         balanceOf[from] -= value;
         balanceOf[to] += value;
@@ -99,7 +99,7 @@ contract xERC20 is GwynethContract {
     }
 
     function xTransferFrom(address from, uint256 chain, address to, uint256 value) public returns (bool) {
-        require(balanceOf[from] >= value, "Insufficient balance");
+        require(balanceOf[from] >= value, "xERC20::xTransferFrom: Insufficient balance");
         if (from != msg.sender) {
             require(allowance[from][msg.sender] >= value, "Allowance exceeded");
             allowance[from][msg.sender] -= value;
@@ -113,8 +113,9 @@ contract xERC20 is GwynethContract {
         return true;
     }
 
-    function sendETH(uint256 chain, address payable to) external payable {
+    function sendETH(uint256 chain, address payable to) external payable returns (bool) {
         (bool success, ) = to.onChain(chain).call{value: msg.value}("");
         require(success);
+        return success;
     }
 }

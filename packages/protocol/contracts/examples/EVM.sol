@@ -7,23 +7,15 @@ library EVM {
     bytes4 constant xCallOptionsMagic = bytes4(keccak256("XCALLOPTIONS"));
     address payable constant extensionOracle = payable(0x1ADB9959EB142bE128E6dfEcc8D571f07cd66DeE);
 
-    uint constant l1ChainId = 1;
     uint16 constant version = 1;
 
-    function xCallOnL1()
-        internal
-        view
-        returns (bool)
-    {
-        return xCallOptions(l1ChainId);
+    struct ChainAddr {
+        uint chain_id;
+        address addr;
     }
 
-    function xCallOnL1(bool sandbox)
-        internal
-        view
-        returns (bool)
-    {
-        return xCallOptions(l1ChainId, sandbox);
+    function on(address addr, uint chain_id) internal pure returns(ChainAddr memory) {
+        return ChainAddr(chain_id, addr);
     }
 
     function xCallOptions(uint chainID)
@@ -74,27 +66,17 @@ library EVM {
         return success && bytes4(result) == xCallOptionsMagic;
     }
 
-
-    function isOnL1() internal view returns (bool) {
-        return chainId() == l1ChainId;
-    }
-
     function chainId() internal view returns (uint256) {
         return block.chainid;
     }
-
 
     function onChain(address addr, uint chainID)
         internal
         view
         returns (address)
     {
-        (bool success, bytes memory result) = address(0x09).staticcall{gas: 1000}(new bytes(0));
-        bool is_simulation = !success || result.length > 1;
-
         bool xCallOptionsAvailable = xCallOptions(chainID, false);
-
-        if (xCallOptionsAvailable || is_simulation) {
+        if (xCallOptionsAvailable) {
             return addr;
         } else {
             return extensionOracle;

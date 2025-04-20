@@ -20,7 +20,6 @@ contract XDeposit is Script {
     function setUp() public {}
 
     function run() public {
-
         vm.startBroadcast(ALICE_PK);
 
         //(bool success, ) = ALICE.call{value: 0.01 ether}("");

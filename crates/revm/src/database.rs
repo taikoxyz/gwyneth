@@ -9,42 +9,59 @@ use revm::{
     Database, SyncDatabase, SyncDatabaseRef,
 };
 use std::collections::HashMap;
+use reth_provider::DatabaseProviderRO;
+use reth_db::mdbx::tx::Tx;
+use reth_db::mdbx::RO;
 
 #[derive(Debug, Clone)]
-pub struct SyncStateProviderDatabase<DB>(pub HashMap<u64, StateProviderDatabase<DB>>);
+pub struct SyncStateProviderDatabase<DB> {
+    pub dbs: HashMap<u64, StateProviderDatabase<DB>>,
+    //pub providers: Vec<DatabaseProviderRO<RETHDB>>,
+}
+
+impl<DB> Default for SyncStateProviderDatabase<DB> {
+    fn default() -> Self {
+        Self {
+            dbs: HashMap::new(),
+        }
+    }
+}
 
 impl<DB> SyncStateProviderDatabase<DB> {
     /// Create new State with generic `StateProvider`.
     pub fn new(chain_id: Option<u64>, db: StateProviderDatabase<DB>) -> Self {
         // assert!(chain_id.is_some());
-        let mut map = HashMap::new();
-        map.insert(chain_id.unwrap_or(ETHEREUM_CHAIN_ID), db);
-        Self(map)
+        let mut dbs = HashMap::new();
+        dbs.insert(chain_id.unwrap_or(ETHEREUM_CHAIN_ID), db);
+        Self {
+            dbs,
+            //providers: Vec::new(),
+        }
     }
 
     /// Consume State and return inner `StateProvider`.
     pub fn into_inner(self) -> HashMap<u64, StateProviderDatabase<DB>> {
-        self.0
+        self.dbs
     }
 
     pub fn add_db(&mut self, chain_id: u64, db: StateProviderDatabase<DB>) {
-        self.0.insert(chain_id, db);
+        self.dbs.insert(chain_id, db);
     }
 
     pub fn get_db(&self, chain_id: u64) -> Option<&StateProviderDatabase<DB>> {
-        self.0.get(&chain_id)
+        self.dbs.get(&chain_id)
     }
 
     pub fn get_db_mut(&mut self, chain_id: u64) -> Option<&mut StateProviderDatabase<DB>> {
-        self.0.get_mut(&chain_id)
+        self.dbs.get_mut(&chain_id)
     }
 
     pub fn get_default_db(&self) -> Option<&StateProviderDatabase<DB>> {
-        self.0.get(&ETHEREUM_CHAIN_ID)
+        self.dbs.get(&ETHEREUM_CHAIN_ID)
     }
 
     pub fn get_default_db_mut(&mut self) -> Option<&mut StateProviderDatabase<DB>> {
-        self.0.get_mut(&ETHEREUM_CHAIN_ID)
+        self.dbs.get_mut(&ETHEREUM_CHAIN_ID)
     }
 }
 
@@ -52,13 +69,13 @@ impl<DB> Deref for SyncStateProviderDatabase<DB> {
     type Target = HashMap<u64, StateProviderDatabase<DB>>;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.dbs
     }
 }
 
 impl<DB> DerefMut for SyncStateProviderDatabase<DB> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.0
+        &mut self.dbs
     }
 }
 

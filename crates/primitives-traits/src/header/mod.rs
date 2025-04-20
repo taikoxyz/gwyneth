@@ -17,7 +17,7 @@ use alloy_rlp::{length_of_length, Decodable, Encodable};
 use bytes::BufMut;
 use core::mem;
 use reth_codecs::{add_arbitrary_tests, Compact};
-use revm_primitives::{calc_blob_gasprice, calc_excess_blob_gas};
+use revm_primitives::{calc_blob_gasprice, calc_excess_blob_gas, calc_gwyneth_gasprice, calc_excess_gwyneth_gas};
 use serde::{Deserialize, Serialize};
 
 /// Block header
@@ -247,16 +247,37 @@ impl Header {
         self.next_block_excess_blob_gas().map(calc_blob_gasprice)
     }
 
-    /// Calculate base fee for next block according to the EIP-1559 spec.
+    /// Returns the blob fee for the next block according to the EIP-4844 spec.
     ///
-    /// Returns a `None` if no base fee is set, no EIP-1559 support
-    pub fn next_block_base_fee(&self, base_fee_params: BaseFeeParams) -> Option<u64> {
-        Some(calc_next_block_base_fee(
+    /// Returns `None` if `excess_blob_gas` is None.
+    ///
+    /// See also [`Self::next_block_excess_blob_gas`]
+    pub fn next_block_base_fee(&self, base_fee_params: BaseFeeParams, timestamp: u64) -> Option<u64> {
+        let new_res = self.next_block_excess_gas(base_fee_params, timestamp).map(calc_gwyneth_gasprice).map(|v| v as u64);
+        let res = Some(calc_next_block_base_fee(
             self.gas_used as u128,
             self.gas_limit as u128,
             self.base_fee_per_gas? as u128,
             base_fee_params,
-        ) as u64)
+        ) as u64);
+
+        println!("basefee check: {:?} -> {:?}", res, new_res);
+
+        // Need to keep the original formula on L1
+        if self.extra_data.len() <= 32 {
+            res
+        } else {
+            new_res
+        }
+    }
+
+    /// Calculate base fee for next block according to the EIP-1559 spec.
+    ///
+    /// Returns a `None` if no base fee is set, no EIP-1559 support
+    pub fn next_block_excess_gas(&self, base_fee_params: BaseFeeParams, timestamp: u64) -> Option<u64> {
+        let target_gas_per_second = 15_000_000u64;
+        let excess_gas = calc_excess_gwyneth_gas(self.base_fee_per_gas.unwrap(), self.gas_used, self.timestamp, timestamp, target_gas_per_second);
+        Some(excess_gas)
     }
 
     /// Calculate excess blob gas for the next block according to the EIP-4844 spec.

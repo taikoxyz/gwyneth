@@ -20,6 +20,8 @@ remappings = [
   "ds-test/=node_modules/ds-test/src/",
   "p256-verifier/=node_modules/p256-verifier/",
 ]
+# block_coinbase = [0, '0x0000000000000000000000000000000000000000']
+# tx_origin = [1, '0x1804c8ab1f12e6bbf3894d4083f33e07309d1f38']
 
 # Do not change the block_gas_limit value, TaikoL2.t.sol depends on it.
 # For mainnet_mock tokenomics test we need a huge value to run lots of iterations.

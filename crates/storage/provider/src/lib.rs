@@ -76,6 +76,13 @@ pub(crate) fn to_range<R: std::ops::RangeBounds<u64>>(bounds: R) -> std::ops::Ra
 pub static NODES: LazyLock<Mutex<HashMap<u64, BlockchainProvider<Arc<DatabaseEnv>>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 //pub static NODES: LazyLock<Mutex<HashMap<u64, ProviderFactory<Arc<DatabaseEnv>>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
+pub static NODES_RPC: LazyLock<Mutex<HashMap<u64, jsonrpsee::http_client::HttpClient<reth_rpc_layer::AuthClientService<jsonrpsee::http_client::transport::HttpBackend>>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+// use reth_rpc_layer::{
+//     secret_to_bearer_header, AuthClientLayer, AuthClientService, AuthLayer, JwtAuthValidator,
+//     JwtSecret,
+// };
+
 // pub static NODES: LazyLock<Mutex<HashMap<u64, ProviderFactory<BlockchainProvider<Arc<TempDatabase<DatabaseEnv>>>>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub static mut GWYNETH_SYNCED_L1_BLOCK_IDX: u64 = 0;
