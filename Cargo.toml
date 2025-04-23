@@ -142,7 +142,9 @@ members = [
     "examples/stateful-precompile/",
     "examples/txpool-tracing/",
     "testing/ef-tests/",
-    "testing/testing-utils", "crates/gwyneth",
+    "testing/testing-utils",
+    "crates/gwyneth",
+    "crates/router",
 ]
 default-members = ["bin/reth"]
 
@@ -276,6 +278,7 @@ codegen-units = 1
 
 [workspace.dependencies]
 gwyneth = { path = "crates/gwyneth" }
+gwyneth-router = { path = "crates/router" }
 
 # reth
 reth = { path = "bin/reth" }

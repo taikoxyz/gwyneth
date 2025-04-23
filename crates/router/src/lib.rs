@@ -1,3 +1,5 @@
+//! RPC router for gwyneth
+
 use axum::{
     extract::State,
     response::IntoResponse,
@@ -15,8 +17,6 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-static DEFAULT_CHAIN_ID: u64 = 160010;
-
 /// Shared application state holding:
 /// - `Client` from Reqwest to make outgoing calls
 /// - A string for the remote JSON-RPC endpoint URL
@@ -25,20 +25,18 @@ static DEFAULT_CHAIN_ID: u64 = 160010;
 struct AppState {
     client: Client,
     chains: HashMap<u64, String>,
+    default_chain_id: u64,
     active_chain_id: u64,
 }
 
-pub async fn start_forwarder() -> Result<()> {
-    let mut chains = HashMap::new();
-    chains.insert(160010, "http://127.0.0.1:32002".to_string());
-    chains.insert(167010, "http://127.0.0.1:32005".to_string());
-    chains.insert(167011, "http://127.0.0.1:32006".to_string());
-
+/// Starts the RPC router for the given chains
+pub async fn start_rpc_router(chains: HashMap<u64, String>, default_chain_id: u64) -> Result<()> {
     // Create shared application state
     let state = AppState {
         client: Client::new(),
         chains,
-        active_chain_id: DEFAULT_CHAIN_ID,
+        default_chain_id,
+        active_chain_id: default_chain_id,
     };
 
     // Wrap the state in an Arc<Mutex<>> so multiple requests can modify it safely
@@ -78,39 +76,13 @@ async fn handle_jsonrpc(
     State(state_mutex): State<Arc<Mutex<AppState>>>,
     Json(payload): Json<Value>,
 ) -> impl IntoResponse {
-    // First, parse the incoming JSON as an Alloy JSON-RPC request.
-    // AlloyRequest is the JSON-RPC request type from Alloy, which validates the structure.
-    // let parse_result: Result<AlloyRequest<SingleParam>, _> = serde_json::from_value(payload.clone());
-    // let request = match parse_result {
-    //     Ok(req) => req,
-    //     Err(e) => {
-    //         // If it fails Alloy's JSON-RPC parsing, return an error message
-    //         let error_response = json!({
-    //             "jsonrpc": "2.0",
-    //             "error": {
-    //                 "code": -32600,
-    //                 "message": format!("Invalid JSON-RPC request: {e}")
-    //             },
-    //             "id": null
-    //         });
-    //         return Json(error_response);
-    //     }
-    // };
-
     println!("payload: {:?}", payload);
     println!("method: {:?}", payload["method"]);
-
-    // // Retrieve the method name to determine if we handle locally or forward
-    // let method = request.meta.method.into_owned().as_str();
-
-    // // For JSON-RPC, the request ID could be None, a Number, or a String.
-    // // We'll forward or return the same ID to keep it consistent for the client.
-    // let request_id = request.meta.id.clone();
 
     let method = payload["method"].as_str().unwrap();
     let request_id = payload["id"].as_u64().unwrap();
 
-    // // Lock the shared state for reading/updating
+    // Lock the shared state for reading/updating
     let mut state: tokio::sync::MutexGuard<'_, AppState> = state_mutex.lock().await;
 
     match method {
@@ -120,7 +92,7 @@ async fn handle_jsonrpc(
             println!("set active chain to: {:?}", chain_id);
 
             let chain_id = if chain_id == 0 {
-                DEFAULT_CHAIN_ID
+                state.default_chain_id
             } else {
                 chain_id
             };
@@ -149,7 +121,6 @@ async fn handle_jsonrpc(
 
         "eth_getActiveChainId" => {
             // Return the locally stored chain ID
-            let chain_id = state.active_chain_id;
             let success_response = json!({
                 "jsonrpc": "2.0",
                 "result": state.active_chain_id,

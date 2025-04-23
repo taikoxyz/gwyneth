@@ -12,7 +12,6 @@ required-features = ["gwyneth"]
 [lints]
 workspace = true
 
-
 [dependencies]
 # reth
 reth-payload-builder = { workspace = true, features = ["gwyneth"]}

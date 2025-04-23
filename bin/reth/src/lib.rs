@@ -32,7 +32,6 @@
 pub mod cli;
 pub mod commands;
 mod macros;
-pub mod forwarder;
 
 /// Re-exported utils.
 pub mod utils {

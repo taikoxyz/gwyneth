@@ -1,0 +1,34 @@
+[package]
+name = "gwyneth-router"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+exclude.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+reth-rpc-layer.workspace = true
+
+jsonrpsee = { workspace = true, features = ["server"] }
+axum = "0.8.3"
+reqwest.workspace = true
+alloy-json-rpc.workspace = true
+anyhow = "1.0"
+
+# io
+serde.workspace = true
+serde_json.workspace = true
+
+# async
+tokio = { workspace = true, features = [
+    "sync",
+    "macros",
+    "time",
+    "rt-multi-thread",
+] }
+futures.workspace = true

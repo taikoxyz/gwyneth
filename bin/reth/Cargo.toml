@@ -13,8 +13,8 @@ default-run = "reth"
 workspace = true
 
 [dependencies]
-
 gwyneth.workspace = true
+gwyneth-router.workspace = true
 
 # reth
 reth-chainspec.workspace = true

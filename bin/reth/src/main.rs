@@ -4,8 +4,11 @@
 #[global_allocator]
 static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
+use std::collections::HashMap;
+
 use gwyneth::{engine_api::RpcServerArgsExEx, GwynethNode};
-use reth::{args::{DiscoveryArgs, NetworkArgs, RpcServerArgs}, forwarder::start_forwarder};
+use gwyneth_router::start_rpc_router;
+use reth::args::{DiscoveryArgs, NetworkArgs, RpcServerArgs};
 use reth_chainspec::ChainSpecBuilder;
 use reth_node_builder::{NodeBuilder, NodeConfig, NodeHandle};
 use reth_node_ethereum::EthereumNode;
@@ -25,6 +28,7 @@ fn main() -> eyre::Result<()> {
         };
 
         let mut gwyneth_nodes = Vec::new();
+        let mut chains = HashMap::new();
 
         for i in 0..NUM_L2_CHAINS {
             let chain_id = BASE_CHAIN_ID + i; // Increment by 1 for each L2
@@ -68,6 +72,12 @@ fn main() -> eyre::Result<()> {
 
             NODES.lock().unwrap().insert(chain_id, gwyneth_node.provider.clone());
             NODES_RPC.lock().unwrap().insert(chain_id, gwyneth_node.auth_server_handle().http_client());
+
+            chains.insert(
+                gwyneth_node.chain_spec().chain.id(),
+                gwyneth_node.rpc_server_handles.rpc.http_url().unwrap().to_string(),
+            );
+
             gwyneth_nodes.push(gwyneth_node);
         }
 
@@ -79,11 +89,17 @@ fn main() -> eyre::Result<()> {
             .launch()
             .await?;
 
+        chains.insert(
+            handle.node.chain_spec().chain.id(),
+            handle.node.rpc_server_handles.rpc.http_url().unwrap().to_string(),
+        );
+
+        println!("chains: {:?}", chains);
 
         NODES.lock().unwrap().insert(handle.node.chain_spec().chain.id(), handle.node.provider.clone());
         NODES_RPC.lock().unwrap().insert(handle.node.chain_spec().chain.id(), handle.node.auth_server_handle().http_client());
 
-        //let res = start_forwarder().await;
+        let res = start_rpc_router(chains, handle.node.chain_spec().chain.id()).await;
 
         handle.wait_for_node_exit().await
     })
@@ -91,6 +107,8 @@ fn main() -> eyre::Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
     use clap::{Args, Parser};
 
@@ -102,8 +120,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn run_forwarder() {
-        println!("Brecht");
-        let rest = start_forwarder().await;
+    async fn run_rpc_router() {
+        let mut chains = HashMap::new();
+        chains.insert(160010, "http://127.0.0.1:32002".to_string());
+        chains.insert(167010, "http://127.0.0.1:32005".to_string());
+        chains.insert(167011, "http://127.0.0.1:32006".to_string());
+        let res = start_rpc_router(chains, 160010).await;
     }
 }
