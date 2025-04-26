@@ -264,11 +264,12 @@ impl Header {
         println!("basefee check: {:?} -> {:?}", res, new_res);
 
         // Need to keep the original formula on L1
-        if self.extra_data.len() <= 32 {
-            res
-        } else {
-            new_res
-        }
+        // if self.extra_data.len() <= 32 {
+        //     res
+        // } else {
+        //     new_res
+        // }
+        res
     }
 
     /// Calculate base fee for next block according to the EIP-1559 spec.
