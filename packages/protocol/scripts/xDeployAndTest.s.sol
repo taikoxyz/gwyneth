@@ -116,7 +116,7 @@ contract XDeployAndTest is Script {
         uint from_balance_before = token_on(from.chain_id).balanceOf(from.addr);
         uint to_balance_before = token_on(to.chain_id).balanceOf(to.addr);
 
-        token_on(from.chain_id).xTransfer(to.chain_id, to.addr, amount);
+        token_on(from.chain_id).xTransfer(from.chain_id, to.chain_id, to.addr, amount);
 
         uint from_balance_after = token_on(from.chain_id).balanceOf(from.addr);
         uint to_balance_after = token_on(to.chain_id).balanceOf(to.addr);

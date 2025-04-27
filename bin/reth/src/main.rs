@@ -47,7 +47,7 @@ fn main() -> eyre::Result<()> {
             chain_spec.parent_chain_id = Some(builder.config().chain.chain().id());
             println!("parent chain id: {:?}", chain_spec.parent_chain_id);
 
-            chain_spec.genesis.base_fee_per_gas = Some(0);
+            //chain_spec.genesis.base_fee_per_gas = Some(1);
 
             let node_config = NodeConfig::test()
                 .with_chain(chain_spec.clone())

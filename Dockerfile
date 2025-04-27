@@ -55,7 +55,8 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 COPY --from=builder /app/reth /usr/local/bin
 
 # Copy rbuilder binary from the published Docker Hub image
-COPY --from=gwynethtaiko/rbuilder:latest_brecht /usr/local/bin/rbuilder /usr/local/bin/rbuilder
+COPY --from=gwynethbrecht/rbuilder:booster_dev /usr/local/bin/rbuilder /usr/local/bin/rbuilder
+#COPY --from=gwynethtaiko/rbuilder:latest_brecht /usr/local/bin/rbuilder /usr/local/bin/rbuilder
 
 # Copy rbuilder repository (configs, etc.) from the build stage
 COPY --from=builder /app/rbuilder /app/rbuilder
